@@ -1,0 +1,35 @@
+project:
+  default_sample_rate: 44100
+  default_bpm: 120
+  default_time_signature: [4, 4]
+  audio_format: wav
+  bit_depth: 16
+
+paths:
+  projects_dir: data/projects
+  voices_dir: data/voices
+  exports_dir: data/exports
+  checkpoints_dir: checkpoints
+
+synthesis:
+  default_f0: 261.63
+  vibrato_depth: 0.5
+  vibrato_rate: 5.0
+  breathiness: 0.1
+  silence_before: 0.1
+  silence_after: 0.15
+
+training:
+  default_epochs: 100
+  default_batch_size: 16
+  default_learning_rate: 0.001
+  default_checkpoint_format: safetensors
+  lora:
+    enabled: false
+    r: 8
+    alpha: 1.0
+
+webui:
+  host: 127.0.0.1
+  port: 8080
+  debug: false

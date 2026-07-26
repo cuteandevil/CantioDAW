@@ -1,0 +1,751 @@
+"""Python daemon bridge for CantioDAW TS orchestrator."""
+import sys
+import json
+import os
+import traceback
+from pathlib import Path
+
+root = sys.argv[1] if len(sys.argv) > 1 else os.getcwd()
+sys.path.insert(0, root)
+os.environ["CANTIODAW_ROOT"] = root
+
+# Add CantioAI for training/synthesis dependencies
+_cantio_ai = os.path.join(os.path.dirname(root), "CantioAI") if os.path.basename(root) == "CantioDAW" else os.path.join(root, "..", "CantioAI")
+_cantio_ai = os.path.abspath(_cantio_ai)
+if os.path.isdir(_cantio_ai):
+    sys.path.insert(0, _cantio_ai)
+    os.environ["CANTIOAI_ROOT"] = _cantio_ai
+
+from cantiodaw import (
+    __version__,
+    ProjectManager,
+    Project,
+    MIDIEngine,
+    MIDINote,
+    Mixer,
+    AudioExporter,
+    AudioEffects,
+    VoiceTrainer,
+    VoiceDatasetManager,
+    TrainingConfig as PyTrainingConfig,
+    SVSEngine,
+    SVSConfig as PySVSConfig,
+    LyricsAligner,
+    apply_reverb,
+    apply_eq,
+    apply_compressor,
+)
+
+from cantiodaw.utils import (
+    detect_model_format,
+    detect_model_info,
+    adapt_config,
+    create_adapter,
+)
+
+from cantiodaw.music.ir import MusicIR, EmotionVector, EnergyCurve, StyleVector, SceneTags, ArrangementSpec, StructurePlan, SectionSpec
+from cantiodaw.music.knowledge_graph import KnowledgeGraph
+from cantiodaw.music.parameter_mapper import ParameterMapper
+from cantiodaw.music.labels import EMOTION_LABELS, SCENE_LABELS, STYLE_LABELS
+from cantiodaw.critic.harmony import HarmonyCritic
+from cantiodaw.critic.melody import MelodyCritic
+from cantiodaw.critic.rhythm import RhythmCritic
+from cantiodaw.critic.audio import AudioCritic
+from cantiodaw.critic.vocal import VocalCritic, VocalAnalysis
+from cantiodaw.preference.collector import PreferenceCollector, UserFeedback, ABTestResult
+from cantiodaw.project_version import VersionManager
+
+import numpy as np
+
+manager = ProjectManager()
+version_manager = VersionManager()
+preference_collector = PreferenceCollector()
+knowledge_graph = KnowledgeGraph.load(str(Path(root) / "cantiodaw" / "music" / "knowledge_graph.yaml"))
+mapper = ParameterMapper()
+
+def handle(method: str, params: dict) -> dict:
+    try:
+        if method == "ping":
+            return {"success": True, "data": "pong"}
+
+        elif method == "version":
+            return {"success": True, "data": __version__}
+
+        elif method == "project_create":
+            p = Project(params["name"])
+            if "bpm" in params:
+                p.bpm = params["bpm"]
+            manager.save_project(p)
+            return {"success": True, "data": {"name": p.name, "path": p.path}}
+
+        elif method == "project_list":
+            names = manager.list_projects()
+            return {"success": True, "data": names}
+
+        elif method == "project_load":
+            p = manager.load_project(params["name"])
+            return {"success": True, "data": {
+                "name": p.name, "path": p.path, "bpm": p.bpm,
+                "tracks": [{"id": t.id, "name": t.name, "type": t.type} for t in p.tracks],
+            }}
+
+        elif method == "project_delete":
+            manager.delete_project(params["name"])
+            return {"success": True, "data": None}
+
+        elif method == "project_export":
+            p = manager.load_project(params["name"])
+            exporter = AudioExporter(p, str(params.get("output", "")))
+            result = exporter.export_mixdown()
+            return {"success": True, "data": result}
+
+        elif method == "track_add":
+            p = manager.load_project(params["project"])
+            t = p.add_track(params["name"], params.get("type", "audio"))
+            if "color" in params:
+                t.color = params["color"]
+            manager.save_project(p)
+            return {"success": True, "data": {"id": t.id, "name": t.name}}
+
+        elif method == "track_remove":
+            p = manager.load_project(params["project"])
+            p.remove_track(params["track_id"])
+            manager.save_project(p)
+            return {"success": True, "data": None}
+
+        elif method == "track_update":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params["track_id"]:
+                    if "name" in params:
+                        t.name = params["name"]
+                    if "volume" in params:
+                        t.volume = params["volume"]
+                    if "muted" in params:
+                        t.muted = params["muted"]
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": None}
+
+        elif method == "midi_notes_to_f0":
+            notes = [MIDINote(pitch=n["pitch"], duration=n["duration"], start=n.get("start", 0))
+                     for n in params["notes"]]
+            f0 = MIDIEngine.notes_to_f0(notes, params.get("frame_rate", 100), params.get("total_frames", 1000))
+            return {"success": True, "data": f0.tolist()}
+
+        elif method == "midi_lyrics_to_phonemes":
+            result = LyricsAligner.to_phonemes(params["text"])
+            return {"success": True, "data": result}
+
+        elif method == "detect_model":
+            model_path = params["model_path"]
+            config_path = params.get("config_path")
+            info = detect_model_info(model_path, config_path)
+            return {"success": True, "data": info}
+
+        elif method == "adapter_info":
+            model_path = params["model_path"]
+            config_path = params.get("config_path")
+            adapted = adapt_config(model_path, config_path)
+            return {"success": True, "data": adapted}
+
+        elif method == "synthesize":
+            model_path = params["model_path"]
+            config_path = params.get("config_path", "")
+            midi_notes = params.get("midi_notes")
+            pitch = params.get("pitch", 60)
+            duration = params.get("duration", 2.0)
+            bpm = params.get("bpm", 120)
+
+            if midi_notes:
+                notes = [MIDINote(
+                    pitch=n.get("pitch", pitch),
+                    duration=n.get("duration", duration),
+                    start=n.get("start", 0),
+                    velocity=n.get("velocity", 100),
+                ) for n in midi_notes]
+            else:
+                notes = [MIDINote(pitch=pitch, duration=duration)]
+
+            engine = SVSEngine(PySVSConfig())
+            engine.load_model(model_path, config_path)
+            audio = engine.synthesize_notes(notes, bpm=bpm)
+
+            out = params.get("output_path")
+            if out:
+                import soundfile as sf
+                sf.write(out, audio, engine.config.sample_rate)
+                return {"success": True, "data": {"output_path": out, "samples": len(audio)}}
+            return {"success": True, "data": {"samples": len(audio)}}
+
+        elif method == "effect_apply":
+            audio_arr = np.array(params["audio"]) if isinstance(params["audio"], list) else params["audio"]
+            sr = params.get("sample_rate", 24000)
+            etype = params["type"]
+            if etype == "reverb":
+                result = apply_reverb(audio_arr, sr)
+            elif etype == "eq":
+                result = apply_eq(audio_arr, sr)
+            elif etype == "compressor":
+                result = apply_compressor(audio_arr, sr)
+            else:
+                return {"success": False, "data": None, "error": f"Unknown effect: {etype}"}
+            return {"success": True, "data": result.tolist()}
+
+        elif method == "train_prepare":
+            dm = VoiceDatasetManager(params["voice_name"])
+            dm.add_directory(params["data_dir"])
+            info = dm.get_info()
+            return {"success": True, "data": {
+                "voice_name": info.voice_name,
+                "sample_count": info.sample_count,
+                "total_duration": info.total_duration,
+            }}
+
+        elif method == "train_start":
+            cfg = PyTrainingConfig(
+                voice_name=params["voice_name"],
+                data_dir=params["data_dir"],
+                epochs=params["epochs"],
+                use_lora=params.get("use_lora", False),
+            )
+            trainer = VoiceTrainer(cfg)
+            trainer.train()
+            return {"success": True, "data": {
+                "checkpoint_path": trainer.checkpoint_path,
+                "loss_history": trainer.loss_history,
+            }}
+
+        elif method == "mix_tracks":
+            p = manager.load_project(params["project"])
+            mixer = Mixer()
+            for t in p.tracks:
+                if t.id in params.get("track_ids", [t.id for t in p.tracks]):
+                    for clip in t.clips:
+                        mixer.add_track(clip.path, volume=t.volume)
+            out = params.get("output_path", "mixdown.wav")
+            mixer.mix_down(out)
+            return {"success": True, "data": {"output_path": out}}
+
+        elif method == "export_stems":
+            p = manager.load_project(params["project"])
+            exporter = AudioExporter(p, params["output_dir"])
+            result = exporter.export_stems()
+            return {"success": True, "data": result}
+
+        elif method == "synthesize_midi":
+            notes = params.get("notes", [])
+            tempo = params.get("tempo", 120)
+            sr = params.get("sample_rate", 24000)
+
+            beats_per_sec = tempo / 60.0
+            total_duration = 0.0
+            note_events = []
+            for n in notes:
+                pitch = n["pitch"]
+                start_beats = n.get("start", 0)
+                dur_beats = n.get("duration", 1)
+                velocity = n.get("velocity", 80)
+                ntype = n.get("type", n.get("track", "melody"))
+                freq = 440.0 * (2.0 ** ((pitch - 69) / 12.0))
+                start_sec = start_beats / beats_per_sec
+                dur_sec = dur_beats / beats_per_sec
+                end_sec = start_sec + dur_sec
+                note_events.append((start_sec, end_sec, freq, velocity / 127.0, ntype, pitch))
+                if end_sec > total_duration:
+                    total_duration = end_sec
+
+            total_samples = int(total_duration * sr) + sr
+            audio = np.zeros(total_samples, dtype=np.float64)
+            t = np.arange(total_samples) / sr
+
+            for start_sec, end_sec, freq, amp, ntype, pitch in note_events:
+                start_idx = int(start_sec * sr)
+                end_idx = int(end_sec * sr)
+                if end_idx > len(audio):
+                    end_idx = len(audio)
+                n_len = end_idx - start_idx
+                if n_len <= 0:
+                    continue
+                local_t = t[:n_len]
+
+                if "bass" in ntype:
+                    # Bass: pure sine, clean low end
+                    tone = np.sin(2 * np.pi * freq * local_t)
+                    amp *= 0.5
+                    env_attack = int(0.01 * sr)
+                    env_release = int(0.1 * sr)
+                elif "chord" in ntype:
+                    # Chord: soft sawtooth with harmonics, lower volume
+                    tone = (0.4 * np.sin(2 * np.pi * freq * local_t)
+                          + 0.3 * np.sin(2 * np.pi * freq * 2 * local_t)
+                          + 0.2 * np.sin(2 * np.pi * freq * 3 * local_t))
+                    amp *= 0.25
+                    env_attack = int(0.05 * sr)
+                    env_release = int(0.2 * sr)
+                else:
+                    # Melody: triangle wave (warmer)
+                    tone = 2 * np.abs(2 * (local_t * freq - np.floor(local_t * freq + 0.5))) - 1
+                    amp *= 0.4
+                    env_attack = int(0.02 * sr)
+                    env_release = int(0.08 * sr)
+
+                envelope = np.ones(n_len)
+                if env_attack > 0 and env_attack < n_len:
+                    envelope[:env_attack] = np.linspace(0, 1, env_attack)
+                if env_release > 0 and env_release < n_len:
+                    envelope[-env_release:] = np.linspace(1, 0, env_release)
+
+                audio[start_idx:end_idx] += tone * envelope * amp
+
+            audio = np.clip(audio, -1.0, 1.0)
+
+            out_path = params.get("output_path", "")
+            if out_path:
+                import soundfile as sf
+                sf.write(out_path, audio.astype(np.float32), sr)
+                return {"success": True, "data": {
+                    "output_path": out_path,
+                    "samples": len(audio),
+                    "sample_rate": sr,
+                    "duration": len(audio) / sr,
+                    "note_count": len(notes),
+                }}
+            return {"success": True, "data": {
+                "samples": len(audio),
+                "sample_rate": sr,
+                "duration": len(audio) / sr,
+                "audio_preview": audio.tolist()[:100],
+            }}
+
+        elif method == "export_midi":
+            notes = sorted(params.get("notes", []), key=lambda n: n.get("start", 0))
+            tempo = params.get("tempo", 120)
+            output_path = params.get("output_path", "output.mid")
+            track_name = params.get("track_name", "CantioDAW Composition")
+
+            import mido
+            from mido import MidiFile, MidiTrack, MetaMessage, Message
+
+            mid = MidiFile(ticks_per_beat=480)
+            track = MidiTrack()
+            mid.tracks.append(track)
+
+            track.append(MetaMessage('track_name', name=track_name, time=0))
+            track.append(MetaMessage('time_signature', numerator=4, denominator=4, clocks_per_click=24, notated_32nd_notes_per_beat=8, time=0))
+            track.append(MetaMessage('set_tempo', tempo=mido.bpm2tempo(tempo), time=0))
+
+            tick = mid.ticks_per_beat
+            events = []
+            for n in notes:
+                pitch = n["pitch"]
+                start_beats = n.get("start", 0)
+                dur_beats = max(0.25, n.get("duration", 1))
+                velocity = n.get("velocity", 80)
+                start_tick = int(start_beats * tick)
+                end_tick = start_tick + int(dur_beats * tick)
+                events.append((start_tick, 'note_on', pitch, velocity))
+                events.append((end_tick, 'note_off', pitch, 0))
+
+            events.sort(key=lambda e: (e[0], 0 if e[1] == 'note_off' else 1))
+
+            last_tick = 0
+            for tick_pos, evtype, pitch, vel in events:
+                delta = tick_pos - last_tick
+                last_tick = tick_pos
+                if evtype == 'note_on':
+                    track.append(Message('note_on', note=pitch, velocity=vel, time=delta))
+                else:
+                    track.append(Message('note_off', note=pitch, velocity=0, time=delta))
+
+            mid.save(output_path)
+            return {"success": True, "data": {
+                "output_path": output_path,
+                "note_count": len(notes),
+                "tempo": tempo,
+            }}
+
+        # ── Phase 5: Delta Parameter Tools ──
+        elif method == "adjust_dynamics":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params.get("track_id"):
+                    section = params.get("section", "")
+                    curve_delta = params.get("curve_delta", 0.0)
+                    if "effects" not in vars(t):
+                        t.effects = []
+                    t.effects.append({
+                        "type": "dynamics",
+                        "section": section,
+                        "curve_delta": curve_delta,
+                    })
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True}}
+
+        elif method == "adjust_articulation":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params.get("track_id"):
+                    if "effects" not in vars(t):
+                        t.effects = []
+                    t.effects.append({
+                        "type": "articulation",
+                        "start": params.get("start", 0),
+                        "end": params.get("end", 0),
+                        "style": params.get("style", "normal"),
+                        "overlap_delta": params.get("overlap_delta", 0.0),
+                        "attack_delta_ms": params.get("attack_delta_ms", 0.0),
+                    })
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True}}
+
+        elif method == "adjust_vibrato":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params.get("track_id"):
+                    if "effects" not in vars(t):
+                        t.effects = []
+                    t.effects.append({
+                        "type": "vibrato",
+                        "start": params.get("start", 0),
+                        "end": params.get("end", 0),
+                        "depth_delta": params.get("depth_delta", 0.0),
+                        "rate_delta": params.get("rate_delta", 0.0),
+                    })
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True}}
+
+        elif method == "adjust_micro_timing":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params.get("track_id"):
+                    if "micro_timing" not in vars(t):
+                        t.micro_timing = []
+                    t.micro_timing.extend(params.get("adjustments", []))
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True, "count": len(params.get("adjustments", []))}}
+
+        elif method == "adjust_harmonic_color":
+            p = manager.load_project(params["project"])
+            if not hasattr(p, 'harmonic_adjustments'):
+                p.harmonic_adjustments = []
+            p.harmonic_adjustments.append({
+                "section": params.get("section", ""),
+                "quality_delta": params.get("quality_delta", ""),
+                "mode_shift": params.get("mode_shift", 0.0),
+            })
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True}}
+
+        elif method == "apply_swing":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params.get("track_id"):
+                    t.swing_ratio = params.get("ratio", 0.0)
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True}}
+
+        elif method == "apply_rubato":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params.get("track_id"):
+                    t.rubato_curve = params.get("curve", [])
+                    break
+            manager.save_project(p)
+            return {"success": True, "data": {"applied": True}}
+
+        # ── Phase 7: Version / Checkpoint Tools ──
+        elif method == "project_snapshot":
+            p = manager.load_project(params["project"])
+            vid = version_manager.snapshot(p)
+            return {"success": True, "data": {"version_id": vid, "project": params["project"]}}
+
+        elif method == "diff_versions":
+            diff = version_manager.diff(params["project"], params["v1"], params["v2"])
+            return {"success": True, "data": diff}
+
+        elif method == "rollback_to_version":
+            p = manager.load_project(params["project"])
+            ok = version_manager.rollback(p, params["version"])
+            if ok:
+                manager.save_project(p)
+            return {"success": True, "data": {"rolled_back": ok, "version": params["version"]}}
+
+        elif method == "list_versions":
+            versions = version_manager.list_versions(params["project"])
+            return {"success": True, "data": [v.__dict__ for v in versions]}
+
+        elif method == "request_checkpoint":
+            p = manager.load_project(params["project"])
+            versions = version_manager.list_versions(params["project"])
+            if len(versions) >= 2:
+                v_prev = versions[-2]
+                diff = version_manager.diff(params["project"], v_prev.version_id, versions[-1].version_id)
+            else:
+                diff = {"changes": {}, "track_count_change": 0}
+            return {"success": True, "data": {
+                "checkpoint": True,
+                "message": params.get("message", ""),
+                "project": params["project"],
+                "track_count": len(p.tracks),
+                "version_count": len(versions),
+                "diff_vs_previous": diff,
+            }}
+
+        # ── Phase 8: Render Tools ──
+        elif method == "render_preview":
+            p = manager.load_project(params["project"])
+            out = params.get("output_path", "preview.wav")
+            mixer = Mixer()
+            for t in p.tracks:
+                for clip in t.clips:
+                    mixer.add_track(clip["path"], volume=t.volume)
+            mixer.mix_down(out)
+            return {"success": True, "data": {"output_path": out, "quality": "preview"}}
+
+        elif method == "render_final":
+            p = manager.load_project(params["project"])
+            out = params.get("output_path", "final.wav")
+            sr = params.get("sample_rate", 44100)
+            mixer = Mixer()
+            for t in p.tracks:
+                for clip in t.clips:
+                    mixer.add_track(clip["path"], volume=t.volume)
+            mixer.mix_down(out)
+            return {"success": True, "data": {"output_path": out, "quality": "final", "sample_rate": sr}}
+
+        # ── Phase 9: Preference Tools ──
+        elif method == "feedback_submit":
+            fb = UserFeedback(
+                version_id=params["version_id"],
+                project_id=params["project"],
+                score=params["score"],
+                comment=params.get("comment"),
+            )
+            preference_collector.record_feedback(fb)
+            avg = preference_collector.get_average_score(params["project"])
+            return {"success": True, "data": {"recorded": True, "average_score": avg}}
+
+        elif method == "feedback_ab_test":
+            result = ABTestResult(
+                session_id=f"ab_{params['project']}_{params['version_a']}_{params['version_b']}",
+                version_a=params["version_a"],
+                version_b=params["version_b"],
+                preferred=params["preferred"],
+                project_id=params["project"],
+            )
+            preference_collector.record_abtest(result)
+            return {"success": True, "data": {"recorded": True}}
+
+        # ── Phase 6: Critic Tools ──
+        elif method == "analyze_music":
+            p = manager.load_project(params["project"])
+            domains = params.get("domains", ["harmony", "melody", "rhythm", "audio"])
+            results = {}
+            if "harmony" in domains:
+                critic = HarmonyCritic()
+                chords = params.get("chords", [])
+                results["harmony"] = critic.analyze(chords).__dict__
+            if "melody" in domains:
+                critic = MelodyCritic()
+                pitches = params.get("pitches", [])
+                results["melody"] = critic.analyze(pitches).__dict__
+            if "rhythm" in domains:
+                critic = RhythmCritic()
+                starts = params.get("note_starts", [])
+                durs = params.get("note_durations", [])
+                bpm = params.get("bpm", p.bpm)
+                results["rhythm"] = critic.analyze(starts, durs, bpm).__dict__
+            if "audio" in domains:
+                critic = AudioCritic()
+                audio_arr = params.get("audio", None)
+                results["audio"] = {
+                    "score": 1.0,
+                    "note": "Audio critic requires audio data. Use with actual audio samples.",
+                }
+            return {"success": True, "data": results}
+
+        elif method == "analyze_harmony":
+            p = manager.load_project(params["project"])
+            chords = params.get("chords", [])
+            critic = HarmonyCritic()
+            analysis = critic.analyze(chords)
+            return {"success": True, "data": {
+                **analysis.__dict__,
+                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
+            }}
+
+        elif method == "analyze_melody":
+            p = manager.load_project(params["project"])
+            pitches = params.get("pitches", [])
+            critic = MelodyCritic()
+            analysis = critic.analyze(pitches)
+            return {"success": True, "data": {
+                **analysis.__dict__,
+                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
+            }}
+
+        elif method == "analyze_rhythm":
+            p = manager.load_project(params["project"])
+            starts = params.get("note_starts", [])
+            durs = params.get("note_durations", [])
+            bpm = params.get("bpm", p.bpm)
+            critic = RhythmCritic()
+            analysis = critic.analyze(starts, durs, bpm)
+            return {"success": True, "data": {
+                **analysis.__dict__,
+                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
+            }}
+
+        elif method == "analyze_audio":
+            p = manager.load_project(params["project"])
+            audio_data = params.get("audio", None)
+            critic = AudioCritic()
+            if audio_data is not None:
+                analysis = critic.analyze(np.array(audio_data), params.get("sample_rate", 44100))
+            else:
+                analysis = critic.analyze(np.array([]))
+            return {"success": True, "data": {
+                **analysis.__dict__,
+                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
+            }}
+
+        # ── Vocal Quality Tools ──
+        elif method == "analyze_vocal_quality":
+            audio_data = params.get("audio", None)
+            audio_path = params.get("audio_path", None)
+            target_pitches = params.get("target_pitches", None)
+            sr = params.get("sample_rate", 44100)
+
+            if audio_path and audio_data is None:
+                import soundfile as sf
+                audio_data, sr = sf.read(audio_path)
+
+            critic = VocalCritic()
+            if audio_data is not None:
+                audio_arr = np.array(audio_data)
+                if audio_arr.ndim > 1:
+                    audio_arr = audio_arr.mean(axis=1)
+                analysis = critic.analyze(audio_arr, sr, target_pitches)
+            else:
+                analysis = VocalAnalysis()
+                analysis.diagnoses.append(VocalDiagnosis(
+                    problem="No audio provided",
+                    severity=1.0,
+                    details=["Provide audio data or audio_path"],
+                ))
+
+            return {"success": True, "data": {
+                "pitch_deviation_mean_cents": analysis.pitch_deviation_mean_cents,
+                "pitch_deviation_max_cents": analysis.pitch_deviation_max_cents,
+                "pitch_deviation_std_cents": analysis.pitch_deviation_std_cents,
+                "on_pitch_ratio": analysis.on_pitch_ratio,
+                "artifact_electricity": analysis.artifact_electricity,
+                "artifact_breathiness": analysis.artifact_breathiness,
+                "artifact_breaks": analysis.artifact_breaks,
+                "score": analysis.score(),
+                "diagnoses": [d.__dict__ for d in analysis.diagnoses],
+                "suggestions": [s for d in analysis.diagnoses for s in critic.generate_suggestions([d])],
+            }}
+
+        elif method == "adjust_synthesized_pitch":
+            audio_path = params.get("audio_path", "")
+            start_sec = params.get("start", 0.0)
+            end_sec = params.get("end", 0.0)
+            correction_cents = params.get("correction_cents", 0)
+            output_path = params.get("output_path", audio_path)
+
+            import soundfile as sf
+            audio, sr = sf.read(audio_path)
+            if audio.ndim > 1:
+                audio = audio.mean(axis=1)
+
+            start_idx = int(start_sec * sr)
+            end_idx = int(end_sec * sr)
+            if end_idx > len(audio):
+                end_idx = len(audio)
+            if start_idx >= end_idx:
+                return {"success": False, "error": "Invalid time range"}
+
+            # Pitch shift using linear resampling over the target segment
+            shift_ratio = 2.0 ** (correction_cents / 1200.0)
+            segment = audio[start_idx:end_idx]
+            orig_len = len(segment)
+            new_len = int(orig_len / shift_ratio)
+
+            if new_len > 0 and orig_len > 0:
+                shifted = np.interp(
+                    np.linspace(0, orig_len - 1, new_len),
+                    np.arange(orig_len),
+                    segment,
+                )
+                # Stretch back to original length to preserve timing
+                stretched = np.interp(
+                    np.linspace(0, new_len - 1, orig_len),
+                    np.arange(new_len),
+                    shifted,
+                )
+                audio[start_idx:end_idx] = stretched
+
+            sf.write(output_path, audio.astype(np.float32), sr)
+            return {"success": True, "data": {
+                "output_path": output_path,
+                "correction_cents": correction_cents,
+                "segment_start": start_sec,
+                "segment_end": end_sec,
+                "samples_modified": end_idx - start_idx,
+            }}
+
+        # ── Knowledge Graph Tools ──
+        elif method == "knowledge_graph_query":
+            concept = params.get("concept", "")
+            direction = params.get("direction", "affects")
+            results = knowledge_graph.query(concept, direction)
+            return {"success": True, "data": {
+                "concept": concept,
+                "direction": direction,
+                "effects": [{"target": e.target, "delta": e.delta} for e in results],
+            }}
+
+        # ── Parameter Mapping Tools ──
+        elif method == "parameter_map_intent":
+            ir_dict = params.get("ir", {})
+            ir = MusicIR.from_dict(ir_dict)
+            deltas = mapper.map_ir(ir)
+            return {"success": True, "data": {
+                "deltas": [d.__dict__ for d in deltas],
+                "count": len(deltas),
+            }}
+
+        else:
+            return {"success": False, "data": None, "error": f"Unknown method: {method}"}
+
+    except Exception as e:
+        tb = traceback.format_exc()
+        return {"success": False, "data": None, "error": f"{type(e).__name__}: {e}\n{tb}"}
+
+
+def main():
+    for line in sys.stdin:
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if msg.get("method") == "__shutdown__":
+            break
+        result = handle(msg["method"], msg.get("params", {}))
+        result["id"] = msg["id"]
+        sys.stdout.write(json.dumps(result) + "\n")
+        sys.stdout.flush()
+
+
+if __name__ == "__main__":
+    main()

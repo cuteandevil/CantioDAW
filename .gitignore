@@ -1,0 +1,44 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+*.spec
+*.egg
+
+# Virtual env
+venv/
+.venv/
+env/
+
+# TypeScript
+node_modules/
+ts-orchestrator/dist/
+ts-orchestrator/*.blob
+ts-orchestrator/sea-config.json
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Runtime data
+data/exports/*
+data/preferences/*
+data/projects/*
+data/versions/*
+!data/**/.gitkeep
+
+# Checkpoints
+checkpoints/*
+
+# Release
+release/
+*.exe

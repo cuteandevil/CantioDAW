@@ -1,0 +1,246 @@
+nodes:
+  - id: tension
+    label: 紧张感
+    affects:
+      - target: harmony.dissonance
+        delta: 0.3
+      - target: harmony.dominant_frequency
+        delta: 0.4
+      - target: rhythm.syncopation
+        delta: 0.3
+      - target: sound.brightness
+        delta: 0.2
+      - target: mix.compression
+        delta: 0.2
+    inverse:
+      - target: harmony.dissonance
+        delta: -0.3
+      - target: harmony.resolution
+        delta: 0.3
+    related:
+      - urgency
+      - conflict
+
+  - id: calmness
+    label: 平静感
+    affects:
+      - target: harmony.dissonance
+        delta: -0.4
+      - target: harmony.resolution
+        delta: 0.5
+      - target: rhythm.density
+        delta: -0.3
+      - target: sound.reverb
+        delta: 0.3
+      - target: mix.dynamic_range
+        delta: -0.2
+    inverse:
+      - target: harmony.dissonance
+        delta: 0.4
+      - target: rhythm.syncopation
+        delta: 0.2
+    related:
+      - peace
+      - meditation
+
+  - id: sadness
+    label: 悲伤感
+    affects:
+      - target: harmony.dissonance
+        delta: 0.2
+      - target: harmony.minor_ratio
+        delta: 0.5
+      - target: melody.contour
+        delta: -0.3
+      - target: sound.reverb
+        delta: 0.4
+      - target: sound.brightness
+        delta: -0.3
+      - target: arrangement.density
+        delta: -0.2
+    inverse:
+      - target: harmony.major_ratio
+        delta: 0.4
+      - target: melody.contour
+        delta: 0.3
+    related:
+      - melancholy
+      - loneliness
+
+  - id: joy
+    label: 喜悦感
+    affects:
+      - target: harmony.major_ratio
+        delta: 0.5
+      - target: harmony.consonance
+        delta: 0.4
+      - target: melody.contour
+        delta: 0.4
+      - target: rhythm.density
+        delta: 0.3
+      - target: sound.brightness
+        delta: 0.3
+      - target: arrangement.density
+        delta: 0.2
+    inverse:
+      - target: harmony.minor_ratio
+        delta: 0.4
+      - target: melody.interval_size
+        delta: -0.3
+    related:
+      - happiness
+      - excitement
+
+  - id: urgency
+    label: 紧迫感
+    affects:
+      - target: rhythm.bpm
+        delta: 0.3
+      - target: rhythm.density
+        delta: 0.4
+      - target: harmony.dissonance
+        delta: 0.3
+      - target: sound.brightness
+        delta: 0.3
+      - target: mix.compression
+        delta: 0.3
+    inverse:
+      - target: rhythm.bpm
+        delta: -0.3
+      - target: sound.reverb
+        delta: 0.3
+    related:
+      - tension
+      - drive
+
+  - id: hope
+    label: 希望感
+    affects:
+      - target: melody.ascending_contour
+        delta: 0.5
+      - target: harmony.resolution
+        delta: 0.6
+      - target: harmony.major_ratio
+        delta: 0.4
+      - target: sound.brightness
+        delta: 0.3
+      - target: arrangement.density
+        delta: 0.2
+    inverse:
+      - target: melody.contour
+        delta: -0.4
+      - target: harmony.dissonance
+        delta: 0.3
+    related:
+      - optimism
+      - aspiration
+
+  - id: darkness
+    label: 阴暗感
+    affects:
+      - target: harmony.minor_ratio
+        delta: 0.5
+      - target: sound.brightness
+        delta: -0.5
+      - target: harmony.dissonance
+        delta: 0.3
+      - target: arrangement.density
+        delta: -0.2
+      - target: mix.reverb
+        delta: 0.3
+    inverse:
+      - target: harmony.major_ratio
+        delta: 0.4
+      - target: sound.brightness
+        delta: 0.4
+    related:
+      - fear
+      - mystery
+
+  - id: epicness
+    label: 史诗感
+    affects:
+      - target: arrangement.density
+        delta: 0.5
+      - target: harmony.dissonance
+        delta: 0.2
+      - target: sound.reverb
+        delta: 0.4
+      - target: mix.dynamic_range
+        delta: 0.5
+      - target: melody.interval_size
+        delta: 0.3
+    inverse:
+      - target: arrangement.density
+        delta: -0.4
+      - target: sound.reverb
+        delta: -0.3
+    related:
+      - grandeur
+      - cinematic
+
+  - id: intimacy
+    label: 亲密感
+    affects:
+      - target: arrangement.density
+        delta: -0.4
+      - target: sound.reverb
+        delta: -0.3
+      - target: harmony.dissonance
+        delta: -0.3
+      - target: sound.brightness
+        delta: -0.2
+      - target: mix.compression
+        delta: 0.2
+    inverse:
+      - target: arrangement.density
+        delta: 0.3
+      - target: sound.reverb
+        delta: 0.3
+    related:
+      - warmth
+      - closeness
+
+  - id: chaos
+    label: 混乱感
+    affects:
+      - target: harmony.dissonance
+        delta: 0.5
+      - target: rhythm.syncopation
+        delta: 0.4
+      - target: arrangement.density
+        delta: 0.3
+      - target: sound.distortion
+        delta: 0.3
+      - target: harmony.mode_shift
+        delta: 0.3
+    inverse:
+      - target: harmony.resolution
+        delta: 0.5
+      - target: rhythm.density
+        delta: -0.3
+    related:
+      - tension
+      - unpredictability
+
+  - id: nostalgia
+    label: 怀旧感
+    affects:
+      - target: harmony.suspension_ratio
+        delta: 0.3
+      - target: harmony.seventh_ratio
+        delta: 0.3
+      - target: sound.reverb
+        delta: 0.3
+      - target: sound.brightness
+        delta: -0.2
+      - target: melody.contour
+        delta: -0.2
+    inverse:
+      - target: sound.brightness
+        delta: 0.3
+      - target: rhythm.density
+        delta: 0.2
+    related:
+      - melancholy
+      - reminiscence
