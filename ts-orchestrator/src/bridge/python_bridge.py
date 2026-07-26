@@ -257,8 +257,9 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         elif method == "project_export":
             p = manager.load_project(params["name"])
-            exporter = AudioExporter(p, str(params.get("output", "")))
-            result = exporter.export_mixdown()
+            exporter = AudioExporter(p.sample_rate)
+            exporter.project = p
+            result = exporter.export_mixdown(str(params.get("output", "")))
             return {"success": True, "data": result}
 
         elif method == "track_add":
@@ -271,23 +272,29 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         elif method == "track_remove":
             p = manager.load_project(params["project"])
-            p.remove_track(params["track_id"])
+            tid = params["track_id"]
+            p.remove_track(tid)
             manager.save_project(p)
-            return {"success": True, "data": None}
+            return {"success": True, "data": {"removed": True, "track_id": tid}}
 
         elif method == "track_update":
             p = manager.load_project(params["project"])
+            tid = params["track_id"]
+            changed = []
             for t in p.tracks:
-                if t.id == params["track_id"]:
+                if t.id == tid:
                     if "name" in params:
                         t.name = params["name"]
+                        changed.append("name")
                     if "volume" in params:
                         t.volume = params["volume"]
+                        changed.append("volume")
                     if "muted" in params:
                         t.muted = params["muted"]
+                        changed.append("muted")
                     break
             manager.save_project(p)
-            return {"success": True, "data": None}
+            return {"success": True, "data": {"updated": True, "track_id": tid, "changed": changed}}
 
         elif method == "track_add_clip":
             p = manager.load_project(params["project"])
@@ -408,8 +415,9 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         elif method == "export_stems":
             p = manager.load_project(params["project"])
-            exporter = AudioExporter(p, params["output_dir"])
-            result = exporter.export_stems()
+            exporter = AudioExporter(p.sample_rate)
+            exporter.project = p
+            result = exporter.export_stems(output_dir=params["output_dir"])
             return {"success": True, "data": result}
 
         elif method == "synthesize_midi":

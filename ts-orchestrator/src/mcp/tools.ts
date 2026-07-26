@@ -413,11 +413,12 @@ const adjustDynamics: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       track_id: { type: 'string' },
       section: { type: 'string' },
       curve_delta: { type: 'number', description: 'Dynamics curve delta (-1 to 1)' },
     },
-    required: ['track_id', 'section', 'curve_delta'],
+    required: ['project', 'track_id', 'section', 'curve_delta'],
   },
   handler: (b, p, t) => b.call('adjust_dynamics', p, t),
 };
@@ -428,6 +429,7 @@ const adjustArticulation: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       track_id: { type: 'string' },
       start: { type: 'number' },
       end: { type: 'number' },
@@ -435,7 +437,7 @@ const adjustArticulation: ToolDefinition = {
       overlap_delta: { type: 'number', description: 'Overlap amount delta (-1 to 1)' },
       attack_delta_ms: { type: 'number', description: 'Attack time delta in ms' },
     },
-    required: ['track_id', 'start', 'end'],
+    required: ['project', 'track_id', 'start', 'end'],
   },
   handler: (b, p, t) => b.call('adjust_articulation', p, t),
 };
@@ -446,13 +448,14 @@ const adjustVibrato: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       track_id: { type: 'string' },
       start: { type: 'number' },
       end: { type: 'number' },
       depth_delta: { type: 'number', description: 'Vibrato depth delta (-1 to 1)' },
       rate_delta: { type: 'number', description: 'Vibrato rate delta in Hz' },
     },
-    required: ['track_id', 'start', 'end'],
+    required: ['project', 'track_id', 'start', 'end'],
   },
   handler: (b, p, t) => b.call('adjust_vibrato', p, t),
 };
@@ -463,6 +466,7 @@ const adjustMicroTiming: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       track_id: { type: 'string' },
       adjustments: {
         type: 'array',
@@ -476,7 +480,7 @@ const adjustMicroTiming: ToolDefinition = {
         },
       },
     },
-    required: ['track_id', 'adjustments'],
+    required: ['project', 'track_id', 'adjustments'],
   },
   handler: (b, p, t) => b.call('adjust_micro_timing', p, t),
 };
@@ -487,11 +491,12 @@ const adjustHarmonicColor: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       section: { type: 'string' },
       quality_delta: { type: 'string', description: 'Quality delta (e.g. +dominant, -minor)' },
       mode_shift: { type: 'number', description: 'Mode shift amount (-1 to 1)' },
     },
-    required: ['section'],
+    required: ['project', 'section'],
   },
   handler: (b, p, t) => b.call('adjust_harmonic_color', p, t),
 };
@@ -502,10 +507,11 @@ const applySwing: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       track_id: { type: 'string' },
       ratio: { type: 'number', minimum: 0, maximum: 1, description: 'Swing ratio (0 = straight, 1 = heavy swing)' },
     },
-    required: ['track_id', 'ratio'],
+    required: ['project', 'track_id', 'ratio'],
   },
   handler: (b, p, t) => b.call('apply_swing', p, t),
 };
@@ -516,6 +522,7 @@ const applyRubato: ToolDefinition = {
   inputSchema: {
     type: 'object',
     properties: {
+      project: { type: 'string' },
       track_id: { type: 'string' },
       curve: {
         type: 'array',
@@ -529,7 +536,7 @@ const applyRubato: ToolDefinition = {
         },
       },
     },
-    required: ['track_id', 'curve'],
+    required: ['project', 'track_id', 'curve'],
   },
   handler: (b, p, t) => b.call('apply_rubato', p, t),
 };

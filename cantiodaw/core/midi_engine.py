@@ -56,7 +56,8 @@ class MIDIEngine:
     def frequency_to_pitch(freq: float) -> float:
         return 12 * np.log2(freq / 440.0) + 69
 
-    def notes_to_f0(self, notes: List[MIDINote], frame_rate: float = 200,
+    @staticmethod
+    def notes_to_f0(notes: List[MIDINote], frame_rate: float = 200,
                     total_frames: Optional[int] = None) -> np.ndarray:
         if not notes:
             return np.zeros(total_frames or 0, dtype=np.float32)
