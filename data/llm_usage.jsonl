@@ -1,2 +1,0 @@
-{"provider":"ollama","model":"gemma4:31b","promptTokens":18,"completionTokens":2,"totalTokens":20,"timestamp":1785087568689,"duration":2376,"success":true}
-{"provider":"ollama","model":"gemma4:31b","promptTokens":18,"completionTokens":2,"totalTokens":20,"timestamp":1785087631910,"duration":1241,"success":true}

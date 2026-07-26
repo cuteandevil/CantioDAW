@@ -34,6 +34,7 @@ data/exports/*
 data/preferences/*
 data/projects/*
 data/versions/*
+data/*.jsonl
 !data/**/.gitkeep
 
 # Checkpoints
