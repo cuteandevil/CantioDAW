@@ -28,9 +28,9 @@ class RhythmCritic:
         if not note_starts:
             return analysis
 
-        total_duration = max(note_starts) + sum(note_durations) / len(note_durations) if note_durations else 1.0
+        total_duration = max(s + d for s, d in zip(note_starts, note_durations)) if note_starts else 1.0
         total_notes_time = sum(note_durations)
-        analysis.note_density = total_notes_time / max(total_duration, 1)
+        analysis.note_density = min(total_notes_time / max(total_duration, 1), 1.0)
         analysis.rest_ratio = 1.0 - analysis.note_density
 
         analysis.swing_amount = self._calc_swing(note_starts, bpm)

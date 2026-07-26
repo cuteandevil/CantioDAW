@@ -99,11 +99,12 @@ class VocalCritic:
 
         # artifact: electricity (excessive high-frequency energy in unvoiced regions)
         if np.any(~voiced):
-            unvoiced = audio[~np.interp(np.arange(len(audio)) / sample_rate, f0_time[voiced], f0[voiced]) > 0] if np.any(voiced) else audio
-            if len(unvoiced) > sr // 10:
+            interp_f0 = np.interp(np.arange(len(audio)) / sample_rate, f0_time[voiced], f0[voiced])
+            unvoiced = audio[interp_f0 <= 0] if np.any(voiced) else audio
+            if len(unvoiced) > sample_rate // 10:
                 try:
                     import scipy.fft
-                    spec = np.abs(scipy.fft.rfft(unvoiced[:sr]))
+                    spec = np.abs(scipy.fft.rfft(unvoiced[:sample_rate]))
                     high_bins = spec[len(spec) // 2:]
                     low_bins = spec[:len(spec) // 2]
                     hf_ratio = float(np.sum(high_bins) / (np.sum(low_bins) + 1e-8))

@@ -76,7 +76,7 @@ def _verify_token(token: str, expected_tool: str = "") -> bool:
         sig = token[dot_idx + 1:]
         expected_sig = base64.urlsafe_b64encode(
             hmac.new(_session_key, encoded, hashlib.sha256).digest()
-        ).decode("ascii")
+        ).decode("ascii").rstrip("=")
         if sig != expected_sig:
             return False
         padding = 4 - len(encoded) % 4
@@ -96,6 +96,103 @@ version_manager = VersionManager()
 preference_collector = PreferenceCollector()
 knowledge_graph = KnowledgeGraph.load(str(Path(root) / "cantiodaw" / "music" / "knowledge_graph.yaml"))
 mapper = ParameterMapper()
+
+
+def _extract_track_data(project_name: str, track_id: str):
+    """Find a track by ID in a project. Returns None if not found."""
+    p = manager.load_project(project_name)
+    for t in p.tracks:
+        if t.id == track_id:
+            return t
+    return None
+
+
+def _extract_track_notes(project_name: str, track_id: str) -> list:
+    """Extract MIDI notes from a track's clips."""
+    t = _extract_track_data(project_name, track_id)
+    if t is None:
+        return []
+    notes = []
+    for clip in t.clips:
+        clip_notes = clip.get("notes", [])
+        for n in clip_notes:
+            notes.append({
+                "pitch": n.get("pitch", 60),
+                "start": n.get("start", 0.0),
+                "duration": n.get("duration", 0.5),
+            })
+    return notes
+
+
+def _extract_track_pitches(project_name: str, track_id: str) -> list:
+    """Extract pitch list from a track's MIDI notes."""
+    notes = _extract_track_notes(project_name, track_id)
+    return [n["pitch"] for n in notes]
+
+
+def _extract_track_rhythm(project_name: str, track_id: str) -> tuple:
+    """Extract note_starts and note_durations from a track's MIDI notes."""
+    notes = _extract_track_notes(project_name, track_id)
+    starts = [n["start"] for n in notes]
+    durs = [n["duration"] for n in notes]
+    return starts, durs
+
+
+def _extract_track_chords(project_name: str, track_id: str) -> list:
+    """Extract chord name strings from a track's clips."""
+    t = _extract_track_data(project_name, track_id)
+    if t is None:
+        return []
+    chords = []
+    for clip in t.clips:
+        clip_chords = clip.get("chords", [])
+        for c in clip_chords:
+            if isinstance(c, str):
+                chords.append(c)
+            elif isinstance(c, dict):
+                chords.append(c.get("name", ""))
+    return chords
+
+
+def _extract_track_audio_path(project_name: str, track_id: str):
+    """Extract first audio path from a track's clips."""
+    t = _extract_track_data(project_name, track_id)
+    if t is None:
+        return None
+    for clip in t.clips:
+        path = clip.get("path", "")
+        if path:
+            return path
+    return None
+
+
+def _to_dict(obj):
+    """Convert dataclass/nested object to JSON-safe dict."""
+    if hasattr(obj, '__dataclass_fields__'):
+        return {k: _to_dict(v) for k, v in obj.__dict__.items()}
+    if isinstance(obj, list):
+        return [_to_dict(v) for v in obj]
+    if isinstance(obj, dict):
+        return {k: _to_dict(v) for k, v in obj.items()}
+    return obj
+
+def _mix_project(project_name: str, track_ids=None):
+    """Shared helper: load project, create mixer, add audio clips. Returns mixer or None."""
+    p = manager.load_project(project_name)
+    mixer = Mixer(p.sample_rate)
+    for t in p.tracks:
+        if track_ids is not None and t.id not in track_ids:
+            continue
+        if t.type == "midi":
+            continue
+        for clip in t.clips:
+            path = clip.get("path", "")
+            if not path:
+                continue
+            mixer.add_track(path, volume=t.volume)
+    if not mixer.channels:
+        return None
+    return mixer
 
 def handle(method: str, params: dict, token: str = "") -> dict:
     try:
@@ -170,6 +267,26 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                     break
             manager.save_project(p)
             return {"success": True, "data": None}
+
+        elif method == "track_add_clip":
+            p = manager.load_project(params["project"])
+            for t in p.tracks:
+                if t.id == params["track_id"]:
+                    clip = {}
+                    if "path" in params:
+                        clip["path"] = params["path"]
+                    if "notes" in params:
+                        clip["notes"] = params["notes"]
+                    if "chords" in params:
+                        clip["chords"] = params["chords"]
+                    if "start" in params:
+                        clip["start"] = params["start"]
+                    if "duration" in params:
+                        clip["duration"] = params["duration"]
+                    clip_id = t.add_clip(clip)
+                    manager.save_project(p)
+                    return {"success": True, "data": {"id": clip_id}}
+            return {"success": False, "data": None, "error": f"Track {params['track_id']} not found"}
 
         elif method == "midi_notes_to_f0":
             notes = [MIDINote(pitch=n["pitch"], duration=n["duration"], start=n.get("start", 0))
@@ -261,12 +378,9 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             }}
 
         elif method == "mix_tracks":
-            p = manager.load_project(params["project"])
-            mixer = Mixer()
-            for t in p.tracks:
-                if t.id in params.get("track_ids", [t.id for t in p.tracks]):
-                    for clip in t.clips:
-                        mixer.add_track(clip.path, volume=t.volume)
+            mixer = _mix_project(params["project"], params.get("track_ids", None))
+            if mixer is None:
+                return {"success": False, "data": None, "error": "No audio clips to mix"}
             out = params.get("output_path", "mixdown.wav")
             mixer.mix_down(out)
             return {"success": True, "data": {"output_path": out}}
@@ -543,23 +657,19 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         # ── Phase 8: Render Tools ──
         elif method == "render_preview":
-            p = manager.load_project(params["project"])
+            mixer = _mix_project(params["project"])
+            if mixer is None:
+                return {"success": False, "data": None, "error": "No audio clips to render"}
             out = params.get("output_path", "preview.wav")
-            mixer = Mixer()
-            for t in p.tracks:
-                for clip in t.clips:
-                    mixer.add_track(clip["path"], volume=t.volume)
             mixer.mix_down(out)
             return {"success": True, "data": {"output_path": out, "quality": "preview"}}
 
         elif method == "render_final":
-            p = manager.load_project(params["project"])
+            mixer = _mix_project(params["project"])
+            if mixer is None:
+                return {"success": False, "data": None, "error": "No audio clips to render"}
             out = params.get("output_path", "final.wav")
             sr = params.get("sample_rate", 44100)
-            mixer = Mixer()
-            for t in p.tracks:
-                for clip in t.clips:
-                    mixer.add_track(clip["path"], volume=t.volume)
             mixer.mix_down(out)
             return {"success": True, "data": {"output_path": out, "quality": "final", "sample_rate": sr}}
 
@@ -590,21 +700,36 @@ def handle(method: str, params: dict, token: str = "") -> dict:
         elif method == "analyze_music":
             p = manager.load_project(params["project"])
             domains = params.get("domains", ["harmony", "melody", "rhythm", "audio"])
+            track_id = params.get("track_id", None)
             results = {}
             if "harmony" in domains:
                 critic = HarmonyCritic()
-                chords = params.get("chords", [])
-                results["harmony"] = critic.analyze(chords).__dict__
+                chords = params.get("chords", None)
+                if chords is None and track_id:
+                    chords = _extract_track_chords(params["project"], track_id)
+                if not chords:
+                    chords = []
+                results["harmony"] = _to_dict(critic.analyze(chords))
             if "melody" in domains:
                 critic = MelodyCritic()
-                pitches = params.get("pitches", [])
-                results["melody"] = critic.analyze(pitches).__dict__
+                pitches = params.get("pitches", None)
+                if not pitches and track_id:
+                    pitches = _extract_track_pitches(params["project"], track_id)
+                if not pitches:
+                    pitches = []
+                results["melody"] = _to_dict(critic.analyze(pitches))
             if "rhythm" in domains:
                 critic = RhythmCritic()
-                starts = params.get("note_starts", [])
-                durs = params.get("note_durations", [])
+                starts = params.get("note_starts", None)
+                durs = params.get("note_durations", None)
+                if (starts is None or durs is None) and track_id:
+                    starts, durs = _extract_track_rhythm(params["project"], track_id)
+                if not starts:
+                    starts = []
+                if not durs:
+                    durs = []
                 bpm = params.get("bpm", p.bpm)
-                results["rhythm"] = critic.analyze(starts, durs, bpm).__dict__
+                results["rhythm"] = _to_dict(critic.analyze(starts, durs, bpm))
             if "audio" in domains:
                 critic = AudioCritic()
                 audio_arr = params.get("audio", None)
@@ -616,48 +741,76 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         elif method == "analyze_harmony":
             p = manager.load_project(params["project"])
-            chords = params.get("chords", [])
+            chords = params.get("chords", None)
+            if chords is None and params.get("track_id"):
+                chords = _extract_track_chords(params["project"], params["track_id"])
+            if not chords:
+                chords = []
             critic = HarmonyCritic()
             analysis = critic.analyze(chords)
-            return {"success": True, "data": {
-                **analysis.__dict__,
-                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
-            }}
+            return {"success": True, "data": _to_dict({
+                "analysis": analysis,
+                "suggestions": critic.generate_suggestions(analysis.diagnoses),
+            })}
 
         elif method == "analyze_melody":
             p = manager.load_project(params["project"])
-            pitches = params.get("pitches", [])
+            pitches = params.get("pitches", None)
+            if not pitches and params.get("track_id"):
+                pitches = _extract_track_pitches(params["project"], params["track_id"])
+            if not pitches:
+                pitches = []
             critic = MelodyCritic()
             analysis = critic.analyze(pitches)
-            return {"success": True, "data": {
-                **analysis.__dict__,
-                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
-            }}
+            return {"success": True, "data": _to_dict({
+                "analysis": analysis,
+                "suggestions": critic.generate_suggestions(analysis.diagnoses),
+            })}
 
         elif method == "analyze_rhythm":
             p = manager.load_project(params["project"])
-            starts = params.get("note_starts", [])
-            durs = params.get("note_durations", [])
+            starts = params.get("note_starts", None)
+            durs = params.get("note_durations", None)
             bpm = params.get("bpm", p.bpm)
+            if (starts is None or durs is None) and params.get("track_id"):
+                starts, durs = _extract_track_rhythm(params["project"], params["track_id"])
+            if not starts:
+                starts = []
+            if not durs:
+                durs = []
             critic = RhythmCritic()
             analysis = critic.analyze(starts, durs, bpm)
-            return {"success": True, "data": {
-                **analysis.__dict__,
-                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
-            }}
+            return {"success": True, "data": _to_dict({
+                "analysis": analysis,
+                "suggestions": critic.generate_suggestions(analysis.diagnoses),
+            })}
 
         elif method == "analyze_audio":
             p = manager.load_project(params["project"])
             audio_data = params.get("audio", None)
+            audio_path = params.get("audio_path", None)
+            sr = params.get("sample_rate", 44100)
+            if audio_path is None and audio_data is None and params.get("track_id"):
+                audio_path = _extract_track_audio_path(params["project"], params["track_id"])
             critic = AudioCritic()
+            if audio_path and audio_data is None:
+                import soundfile as sf
+                audio_data, sr = sf.read(audio_path)
             if audio_data is not None:
-                analysis = critic.analyze(np.array(audio_data), params.get("sample_rate", 44100))
-            else:
-                analysis = critic.analyze(np.array([]))
-            return {"success": True, "data": {
-                **analysis.__dict__,
-                "suggestions": [s.__dict__ for s in critic.generate_suggestions(analysis.diagnoses)],
-            }}
+                audio_arr = np.array(audio_data)
+                stereo_width = 0.0
+                if audio_arr.ndim > 1 and audio_arr.shape[1] >= 2:
+                    l, r = audio_arr[:, 0], audio_arr[:, 1]
+                    if len(l) > 1:
+                        corr = float(np.corrcoef(l, r)[0, 1])
+                        stereo_width = max(0.0, 1.0 - abs(corr))
+                    audio_arr = audio_arr.mean(axis=1)
+                analysis = critic.analyze(audio_arr, sr)
+                analysis.stereo_width = stereo_width
+            return {"success": True, "data": _to_dict({
+                "analysis": analysis,
+                "suggestions": critic.generate_suggestions(analysis.diagnoses),
+            })}
 
         # ── Vocal Quality Tools ──
         elif method == "analyze_vocal_quality":

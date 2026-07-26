@@ -404,6 +404,37 @@ nodes:
 
 ---
 
+## 阶段 12：SF2 + FluidSynth 真实乐器合成
+
+### 12.1 基础设施 — SoundFontSynth 引擎
+
+- [ ] 新建 `cantiodaw/synthesis/soundfont.py` — SoundFontSynth 封装类
+- [ ] `render(notes, tempo, program, bank) → np.ndarray` 批量渲染
+- [ ] `list_instruments()` 枚举音色库可用乐器
+- [ ] `pip install pyfluidsynth` 添加到 `pyproject.toml` 依赖
+- [ ] `config.yaml` 加 `paths.soundfonts_dir`
+- [ ] 默认 SF2 自动查找逻辑（`data/soundfonts/` → 振荡器降级）
+
+### 12.2 替换 `synthesize_midi` 路径
+
+- [ ] `python_bridge.py` 改造：传 `soundfont_path`/`program`/`bank` → SoundFontSynth，无参数时降级振荡器
+- [ ] `tools.ts` `synthesizeMIDI` 加 soundfont/program/bank 参数
+- [ ] 保留振荡器 fallback：`pyfluidsynth` 不可用或不传 path 时走老路
+
+### 12.3 接入混音/渲染管线
+
+- [ ] `_mix_project` 共享函数改造：MIDI 轨道 → SoundFontSynth → 混入 mixer
+- [ ] `mix_tracks`/`render_preview`/`render_final` 加可选 `soundfont_path` 参数
+- [ ] MIDI 轨道 clip 支持独立 `program`，同一轨道不同 clip 可用不同乐器
+
+### 12.4 默认音色库部署
+
+- [ ] 集成 FluidR3_GM.sf2 自动下载工具
+- [ ] 验证：`synthesize_midi` 出真实乐器 → `mix_tracks` 混入 → `render_preview` 输出 WAV
+- [ ] 多乐器编排验证：钢琴 + 弦乐 + 贝斯 三条 MIDI 轨并行渲染
+
+---
+
 ## MVP 开发顺序
 
 ### 第一阶段（目标：NL → MIDI）

@@ -130,6 +130,42 @@ const trackUpdate: ToolDefinition = {
   handler: (b, p, t) => b.call('track_update', p, t),
 };
 
+const trackAddClip: ToolDefinition = {
+  name: 'track_add_clip',
+  description: 'Add a clip (MIDI notes, chords, or audio reference) to a track',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      project: { type: 'string', description: 'Project name' },
+      track_id: { type: 'string', description: 'Track ID to add clip to' },
+      notes: {
+        type: 'array',
+        items: {
+          type: 'object',
+          properties: {
+            pitch: { type: 'integer', description: 'MIDI pitch 0-127' },
+            start: { type: 'number', description: 'Start time in beats' },
+            duration: { type: 'number', description: 'Duration in beats' },
+            velocity: { type: 'integer', description: 'Velocity 0-127', default: 80 },
+          },
+          required: ['pitch', 'start', 'duration'],
+        },
+        description: 'MIDI notes for this clip',
+      },
+      chords: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'Chord names for harmony analysis (e.g. ["C", "G7", "Am"])',
+      },
+      path: { type: 'string', description: 'Audio file path (for audio tracks)' },
+      start: { type: 'number', description: 'Clip start position in beats', default: 0 },
+      duration: { type: 'number', description: 'Clip duration in beats' },
+    },
+    required: ['project', 'track_id'],
+  },
+  handler: (b, p, t) => b.call('track_add_clip', p, t),
+};
+
 // ──────────────────────────── MIDI Tools ────────────────────────────
 
 const midiNotesToF0: ToolDefinition = {
@@ -668,14 +704,14 @@ const analyzeRhythm: ToolDefinition = {
 
 const analyzeAudio: ToolDefinition = {
   name: 'analyze_audio',
-  description: 'Run audio quality analysis on a project track',
+  description: 'Run audio quality analysis on a project track or audio file',
   inputSchema: {
     type: 'object',
     properties: {
       project: { type: 'string' },
       track_id: { type: 'string' },
+      audio_path: { type: 'string', description: 'Path to audio file (alternative to project/track_id)' },
     },
-    required: ['project'],
   },
   handler: (b, p, t) => b.call('analyze_audio', p, t),
 };
@@ -768,6 +804,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   trackAdd,
   trackRemove,
   trackUpdate,
+  trackAddClip,
   // MIDI
   midiNotesToF0,
   midiLyricsToPhonemes,

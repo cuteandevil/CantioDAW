@@ -54,8 +54,9 @@ class Track:
 
 
 class Project:
-    def __init__(self, name: str = "Untitled"):
+    def __init__(self, name: str = "Untitled", path: str = ""):
         self.name = name
+        self.path = path
         self.sample_rate = DEFAULT_CONFIG["project"]["default_sample_rate"]
         self.bpm = DEFAULT_CONFIG["project"]["default_bpm"]
         self.time_signature = DEFAULT_CONFIG["project"]["default_time_signature"]
@@ -127,6 +128,7 @@ class ProjectManager:
 
     def save_project(self, project: Project) -> Path:
         path = self._project_path(project.name)
+        project.path = str(path)
         with open(path, "w") as f:
             json.dump(project.to_dict(), f, indent=2)
         return path
@@ -139,7 +141,9 @@ class ProjectManager:
             raise FileNotFoundError(f"Project not found: {name_or_path}")
         with open(path) as f:
             data = json.load(f)
-        return Project.from_dict(data)
+        p = Project.from_dict(data)
+        p.path = str(path)
+        return p
 
     def delete_project(self, name: str) -> bool:
         path = self._project_path(name)

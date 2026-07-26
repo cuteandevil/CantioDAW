@@ -37,9 +37,10 @@ class AudioCritic:
         if audio is None or len(audio) == 0:
             return analysis
 
+        analysis.rms_energy_curve = self._calc_rms_curve(audio)
+        analysis.stereo_width = self._calc_stereo_width(audio)
         analysis.crest_factor = self._calc_crest_factor(audio)
         analysis.loudness_range = self._calc_loudness_range(audio)
-        analysis.stereo_width = self._calc_stereo_width(audio)
         analysis.spectral_brightness = self._calc_spectral_brightness(audio, sample_rate)
         analysis.bass_density = self._calc_bass_density(audio, sample_rate)
         analysis.mid_clarity = self._calc_mid_clarity(audio, sample_rate)
@@ -83,6 +84,19 @@ class AudioCritic:
                     target="sound.sub_bass", delta=-0.2, domain="sound", bounds=[0.0, 1.0],
                 ))
         return suggestions
+
+    def _calc_rms_curve(self, audio: np.ndarray, frame_ms: int = 50) -> list:
+        if len(audio.shape) > 1:
+            audio = np.mean(audio, axis=1)
+        sr = 44100
+        frame_len = int(sr * frame_ms / 1000)
+        if len(audio) < frame_len:
+            return [float(np.sqrt(np.mean(audio ** 2)))]
+        curves = []
+        for i in range(0, len(audio) - frame_len, frame_len):
+            frame = audio[i:i + frame_len]
+            curves.append(float(np.sqrt(np.mean(frame ** 2))))
+        return curves
 
     def _calc_crest_factor(self, audio: np.ndarray) -> float:
         if len(audio.shape) > 1:

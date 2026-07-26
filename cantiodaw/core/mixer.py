@@ -70,3 +70,22 @@ class Mixer:
     def set_channel(self, track_id: str, volume: float = 1.0,
                     pan: float = 0.0, mute: bool = False):
         self.channels[track_id] = {"volume": volume, "pan": pan, "mute": mute}
+
+    def add_track(self, path: str, volume: float = 1.0) -> str:
+        import soundfile as sf
+        track_id = f"track_{len(self.channels)}"
+        audio, _ = sf.read(path)
+        if audio.ndim > 1:
+            audio = audio.mean(axis=1)
+        self.channels[track_id] = {"volume": volume, "pan": 0.0, "mute": False, "audio": audio}
+        return track_id
+
+    def mix_down(self, output_path: str) -> str:
+        import soundfile as sf
+        track_audios = {}
+        for tid, ch in self.channels.items():
+            if "audio" in ch:
+                track_audios[tid] = ch["audio"]
+        mixed = self.mix(track_audios)
+        sf.write(output_path, mixed, self.sample_rate)
+        return output_path

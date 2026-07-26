@@ -2,10 +2,10 @@ import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdtempSync, writeFileSync, readFileSync, unlinkSync, rmSync, existsSync } from 'node:fs';
 import { join, dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { tmpdir } from 'node:os';
 
-/* c8 ignore next 3 */
-const _filename: string = typeof __filename !== 'undefined' ? __filename : '';
+const _filename: string = typeof __filename !== 'undefined' ? __filename : (typeof import.meta !== 'undefined' ? fileURLToPath(import.meta.url) : '');
 const _dirname: string = typeof __dirname !== 'undefined' ? __dirname : dirname(_filename);
 
 export interface PythonResult {
@@ -22,7 +22,9 @@ export interface PythonBridgeOptions {
 function findBridgeScript(): string {
   const candidates = [
     join(_dirname, 'python_bridge.py'),
+    join(_dirname, '..', 'src', 'bridge', 'python_bridge.py'),
     join(_dirname, '..', '..', 'src', 'bridge', 'python_bridge.py'),
+    join(_dirname, '..', '..', '..', 'ts-orchestrator', 'src', 'bridge', 'python_bridge.py'),
   ];
   for (const p of candidates) {
     if (existsSync(p)) return p;

@@ -25,12 +25,26 @@ class VersionManager:
         self.history: Dict[str, List[VersionSnapshot]] = {}
         self._version_counter: Dict[str, int] = {}
 
-    def snapshot(self, project: Project) -> str:
-        project_id = project.name
-        if project_id not in self._version_counter:
+    def _next_version_id(self, project_id: str) -> str:
+        if project_id in self._version_counter:
+            self._version_counter[project_id] += 1
+            return f"{project_id}_v{self._version_counter[project_id]:03d}"
+        existing = sorted(self.versions_dir.glob(f"{project_id}_v*.json"))
+        if existing:
+            last = existing[-1].stem
+            parts = last.rsplit("_v", 1)
+            if len(parts) == 2 and parts[1].isdigit():
+                self._version_counter[project_id] = int(parts[1])
+            else:
+                self._version_counter[project_id] = 0
+        else:
             self._version_counter[project_id] = 0
         self._version_counter[project_id] += 1
-        v_id = f"{project_id}_v{self._version_counter[project_id]:03d}"
+        return f"{project_id}_v{self._version_counter[project_id]:03d}"
+
+    def snapshot(self, project: Project) -> str:
+        project_id = project.name
+        v_id = self._next_version_id(project_id)
 
         snapshot = VersionSnapshot(
             version_id=v_id,
@@ -95,7 +109,16 @@ class VersionManager:
         return self._load_snapshot(version_id)
 
     def list_versions(self, project_id: str) -> List[VersionSnapshot]:
-        return self.history.get(project_id, [])
+        versions = list(self.history.get(project_id, []))
+        seen = {v.version_id for v in versions}
+        for f in sorted(self.versions_dir.glob(f"{project_id}_v*.json")):
+            vid = f.stem
+            if vid not in seen:
+                snap = self._load_snapshot(vid)
+                if snap:
+                    versions.append(snap)
+                    seen.add(vid)
+        return versions
 
     def _load_snapshot(self, version_id: str) -> Optional[VersionSnapshot]:
         path = self.versions_dir / f"{version_id}.json"
