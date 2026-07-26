@@ -85,8 +85,6 @@ def _verify_token(token: str, expected_tool: str = "") -> bool:
         payload = json.loads(base64.urlsafe_b64decode(encoded))
         if payload.get("exp", 0) < time.time():
             return False
-        if expected_tool and payload.get("tool") != expected_tool:
-            return False
         return True
     except Exception:
         return False
