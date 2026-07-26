@@ -2,6 +2,10 @@
 import sys
 import json
 import os
+import hmac
+import hashlib
+import base64
+import time
 import traceback
 from pathlib import Path
 
@@ -57,14 +61,54 @@ from cantiodaw.project_version import VersionManager
 
 import numpy as np
 
+# Session auth globals
+_session_key = b""
+_session_id = ""
+
+def _verify_token(token: str, expected_tool: str = "") -> bool:
+    if not _session_key or not token:
+        return False
+    try:
+        dot_idx = token.rfind(".")
+        if dot_idx == -1:
+            return False
+        encoded = token[:dot_idx].encode("ascii")
+        sig = token[dot_idx + 1:]
+        expected_sig = base64.urlsafe_b64encode(
+            hmac.new(_session_key, encoded, hashlib.sha256).digest()
+        ).decode("ascii")
+        if sig != expected_sig:
+            return False
+        padding = 4 - len(encoded) % 4
+        if padding != 4:
+            encoded += b"=" * padding
+        payload = json.loads(base64.urlsafe_b64decode(encoded))
+        if payload.get("exp", 0) < time.time():
+            return False
+        if expected_tool and payload.get("tool") != expected_tool:
+            return False
+        return True
+    except Exception:
+        return False
+
 manager = ProjectManager()
 version_manager = VersionManager()
 preference_collector = PreferenceCollector()
 knowledge_graph = KnowledgeGraph.load(str(Path(root) / "cantiodaw" / "music" / "knowledge_graph.yaml"))
 mapper = ParameterMapper()
 
-def handle(method: str, params: dict) -> dict:
+def handle(method: str, params: dict, token: str = "") -> dict:
     try:
+        if method == "__init_session__":
+            global _session_key, _session_id
+            _session_key = base64.urlsafe_b64decode(params.get("key", ""))
+            _session_id = params.get("session_id", "")
+            return {"success": True, "data": {"session_id": _session_id}}
+
+        if token and method not in ("ping", "version", "__init_session__"):
+            if not _verify_token(token, method):
+                return {"success": False, "data": None, "error": "Unauthorized: invalid or expired session token"}
+
         if method == "ping":
             return {"success": True, "data": "pong"}
 
@@ -741,7 +785,8 @@ def main():
             continue
         if msg.get("method") == "__shutdown__":
             break
-        result = handle(msg["method"], msg.get("params", {}))
+        token = msg.get("token", "")
+        result = handle(msg["method"], msg.get("params", {}), token)
         result["id"] = msg["id"]
         sys.stdout.write(json.dumps(result) + "\n")
         sys.stdout.flush()

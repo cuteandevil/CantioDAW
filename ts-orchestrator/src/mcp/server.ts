@@ -8,8 +8,9 @@ import { PythonBridge } from '../bridge/python.js';
 import { ALL_TOOLS, type ToolDefinition } from './tools.js';
 import { LLM_TOOLS } from '../llm/tools.js';
 import type { LLMRouter } from '../llm/router.js';
+import { initSession, createToken, getSessionKey, getSessionId } from '../auth/session.js';
 
-type AnyHandler = (router: LLMRouter | null, bridge: PythonBridge, params: Record<string, unknown>) => Promise<{ success: boolean; data?: unknown; error?: string }>;
+type AnyHandler = (router: LLMRouter | null, bridge: PythonBridge, params: Record<string, unknown>, token?: string) => Promise<{ success: boolean; data?: unknown; error?: string }>;
 
 interface ToolEntry {
   definition: { name: string; description: string; inputSchema: Record<string, unknown> };
@@ -26,11 +27,12 @@ export class CantioDAWMCPServer {
   constructor(bridge: PythonBridge, router?: LLMRouter) {
     this.bridge = bridge;
     this.router = router ?? null;
+    initSession();
 
     for (const t of ALL_TOOLS) {
       this.allTools.push({
         definition: { name: t.name, description: t.description, inputSchema: t.inputSchema },
-        handler: (_router, bridge, params) => t.handler(bridge, params),
+        handler: (_router, bridge, params, token) => t.handler(bridge, params, token),
         isLLM: false,
       });
     }
@@ -38,7 +40,7 @@ export class CantioDAWMCPServer {
     for (const t of LLM_TOOLS) {
       this.allTools.push({
         definition: { name: t.name, description: t.description, inputSchema: t.inputSchema },
-        handler: (router, bridge, params) => (t as unknown as { handler: AnyHandler }).handler(router!, bridge, params),
+        handler: (router, bridge, params, token) => (t as unknown as { handler: AnyHandler }).handler(router!, bridge, params, token),
         isLLM: true,
       });
     }
@@ -68,7 +70,8 @@ export class CantioDAWMCPServer {
         return { content: [{ type: 'text', text: 'LLM router not available. No LLM provider configured.' }], isError: true };
       }
 
-      const result = await entry.handler(this.router, this.bridge, (args ?? {}) as Record<string, unknown>);
+      const token = createToken(name);
+      const result = await entry.handler(this.router, this.bridge, (args ?? {}) as Record<string, unknown>, token);
 
       if (!result.success) {
         return { content: [{ type: 'text', text: result.error ?? 'Unknown error' }], isError: true };
@@ -83,7 +86,7 @@ export class CantioDAWMCPServer {
   }
 
   async start(): Promise<void> {
-    await this.bridge.ensureRunning();
+    await this.bridge.ensureRunning(getSessionKey(), getSessionId());
     if (this.router) {
       const statuses = await this.router.testAll();
       const available = Object.entries(statuses).filter(([, v]) => v).map(([k]) => k);

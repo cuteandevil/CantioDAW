@@ -44,9 +44,12 @@ export class PythonBridge {
     this.bridgeScript = findBridgeScript();
   }
 
-  async ensureRunning(): Promise<void> {
+  async ensureRunning(sessionKey?: string, sessionId?: string): Promise<void> {
     if (this.child && !this.child.killed) return;
     await this.startDaemon();
+    if (sessionKey && sessionId) {
+      await this.call('__init_session__', { key: sessionKey, session_id: sessionId });
+    }
   }
 
   private startDaemon(): Promise<void> {
@@ -97,13 +100,13 @@ export class PythonBridge {
     });
   }
 
-  async call(method: string, params: Record<string, unknown> = {}): Promise<PythonResult> {
+  async call(method: string, params: Record<string, unknown> = {}, token?: string): Promise<PythonResult> {
     await this.ensureRunning();
     const id = `${++this.requestId}-${createHash('md5').update(method + JSON.stringify(params)).digest('hex').slice(0, 8)}`;
 
     return new Promise((resolve) => {
       this.pending.set(id, { resolve });
-      const msg = JSON.stringify({ id, method, params }) + '\n';
+      const msg = JSON.stringify({ id, method, params, ...(token ? { token } : {}) }) + '\n';
       this.child?.stdin?.write(msg);
 
       setTimeout(() => {

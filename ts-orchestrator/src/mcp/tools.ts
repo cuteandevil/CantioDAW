@@ -7,7 +7,7 @@ export interface ToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  handler: (bridge: PythonBridge, params: Record<string, unknown>) => Promise<PythonResult>;
+  handler: (bridge: PythonBridge, params: Record<string, unknown>, token?: string) => Promise<PythonResult>;
 }
 
 function ok(data: unknown): PythonResult {
@@ -31,14 +31,14 @@ const projectCreate: ToolDefinition = {
     },
     required: ['name'],
   },
-  handler: (b, p) => b.call('project_create', p),
+  handler: (b, p, t) => b.call('project_create', p, t),
 };
 
 const projectList: ToolDefinition = {
   name: 'project_list',
   description: 'List all CantioDAW projects',
   inputSchema: { type: 'object', properties: {} },
-  handler: (b) => b.call('project_list'),
+  handler: (b, _p, _t) => b.call('project_list', _p, _t),
 };
 
 const projectLoad: ToolDefinition = {
@@ -49,7 +49,7 @@ const projectLoad: ToolDefinition = {
     properties: { name: { type: 'string' } },
     required: ['name'],
   },
-  handler: (b, p) => b.call('project_load', p),
+  handler: (b, p, t) => b.call('project_load', p, t),
 };
 
 const projectDelete: ToolDefinition = {
@@ -60,8 +60,8 @@ const projectDelete: ToolDefinition = {
     properties: { name: { type: 'string' } },
     required: ['name'],
   },
-  handler: async (b, p) => {
-    await b.call('project_delete', p);
+  handler: async (b, p, t) => {
+    await b.call('project_delete', p, t);
     return ok({ deleted: p.name });
   },
 };
@@ -78,7 +78,7 @@ const projectExport: ToolDefinition = {
     },
     required: ['name'],
   },
-  handler: (b, p) => b.call('project_export', p),
+  handler: (b, p, t) => b.call('project_export', p, t),
 };
 
 // ──────────────────────────── Track Tools ────────────────────────────
@@ -96,7 +96,7 @@ const trackAdd: ToolDefinition = {
     },
     required: ['project', 'name'],
   },
-  handler: (b, p) => b.call('track_add', p),
+  handler: (b, p, t) => b.call('track_add', p, t),
 };
 
 const trackRemove: ToolDefinition = {
@@ -110,7 +110,7 @@ const trackRemove: ToolDefinition = {
     },
     required: ['project', 'track_id'],
   },
-  handler: (b, p) => b.call('track_remove', p),
+  handler: (b, p, t) => b.call('track_remove', p, t),
 };
 
 const trackUpdate: ToolDefinition = {
@@ -127,7 +127,7 @@ const trackUpdate: ToolDefinition = {
     },
     required: ['project', 'track_id'],
   },
-  handler: (b, p) => b.call('track_update', p),
+  handler: (b, p, t) => b.call('track_update', p, t),
 };
 
 // ──────────────────────────── MIDI Tools ────────────────────────────
@@ -155,7 +155,7 @@ const midiNotesToF0: ToolDefinition = {
     },
     required: ['notes'],
   },
-  handler: (b, p) => b.call('midi_notes_to_f0', p),
+  handler: (b, p, t) => b.call('midi_notes_to_f0', p, t),
 };
 
 const midiLyricsToPhonemes: ToolDefinition = {
@@ -168,7 +168,7 @@ const midiLyricsToPhonemes: ToolDefinition = {
     },
     required: ['text'],
   },
-  handler: (b, p) => b.call('midi_lyrics_to_phonemes', p),
+  handler: (b, p, t) => b.call('midi_lyrics_to_phonemes', p, t),
 };
 
 // ──────────────────────────── Synthesis Tools ────────────────────────────
@@ -191,7 +191,7 @@ const synthesize: ToolDefinition = {
     },
     required: ['model_path', 'config_path'],
   },
-  handler: (b, p) => b.call('synthesize', p),
+  handler: (b, p, t) => b.call('synthesize', p, t),
 };
 
 // ──────────────────────────── Audio Effect Tools ────────────────────────────
@@ -208,7 +208,7 @@ const effectApply: ToolDefinition = {
     },
     required: ['audio', 'type'],
   },
-  handler: (b, p) => b.call('effect_apply', p),
+  handler: (b, p, t) => b.call('effect_apply', p, t),
 };
 
 const mixTracks: ToolDefinition = {
@@ -223,7 +223,7 @@ const mixTracks: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('mix_tracks', p),
+  handler: (b, p, t) => b.call('mix_tracks', p, t),
 };
 
 const exportStems: ToolDefinition = {
@@ -237,7 +237,7 @@ const exportStems: ToolDefinition = {
     },
     required: ['project', 'output_dir'],
   },
-  handler: (b, p) => b.call('export_stems', p),
+  handler: (b, p, t) => b.call('export_stems', p, t),
 };
 
 // ──────────────────────────── Training Tools ────────────────────────────
@@ -253,7 +253,7 @@ const trainPrepare: ToolDefinition = {
     },
     required: ['voice_name', 'data_dir'],
   },
-  handler: (b, p) => b.call('train_prepare', p),
+  handler: (b, p, t) => b.call('train_prepare', p, t),
 };
 
 const trainStart: ToolDefinition = {
@@ -269,7 +269,7 @@ const trainStart: ToolDefinition = {
     },
     required: ['voice_name', 'data_dir'],
   },
-  handler: (b, p) => b.call('train_start', p),
+  handler: (b, p, t) => b.call('train_start', p, t),
 };
 
 // ──────────────────────────── Orchestration Tools ────────────────────────────
@@ -289,19 +289,19 @@ const composeSong: ToolDefinition = {
     },
     required: ['project_name', 'model_path', 'config_path'],
   },
-  handler: async (b, p) => {
+  handler: async (b, p, t) => {
     const name = p.project_name as string;
 
-    const proj = await b.call('project_create', { name, bpm: p.bpm ?? 120 });
+    const proj = await b.call('project_create', { name, bpm: p.bpm ?? 120 }, t);
     if (!proj.success) return proj;
 
-    const trackR = await b.call('track_add', { project: name, name: 'Melody', type: 'midi', color: '#4CAF50' });
+    const trackR = await b.call('track_add', { project: name, name: 'Melody', type: 'midi', color: '#4CAF50' }, t);
     if (!trackR.success) return trackR;
 
     let lyrics = p.lyrics as string | undefined;
     let phonemes: string | undefined;
     if (lyrics) {
-      const ph = await b.call('midi_lyrics_to_phonemes', { text: lyrics });
+      const ph = await b.call('midi_lyrics_to_phonemes', { text: lyrics }, t);
       if (ph.success) phonemes = ph.data as string;
     }
 
@@ -327,8 +327,8 @@ const trainVoiceFromAudio: ToolDefinition = {
     },
     required: ['voice_name', 'data_dir'],
   },
-  handler: async (b, p) => {
-    const prep = await b.call('train_prepare', { voice_name: p.voice_name, data_dir: p.data_dir });
+  handler: async (b, p, t) => {
+    const prep = await b.call('train_prepare', { voice_name: p.voice_name, data_dir: p.data_dir }, t);
     if (!prep.success) return prep;
 
     const train = await b.call('train_start', {
@@ -336,7 +336,7 @@ const trainVoiceFromAudio: ToolDefinition = {
       data_dir: p.data_dir,
       epochs: p.epochs ?? 10,
       use_lora: p.use_lora ?? false,
-    });
+    }, t);
     return train;
   },
 };
@@ -366,7 +366,7 @@ const applyVoiceToMIDI: ToolDefinition = {
     },
     required: ['model_path', 'config_path', 'midi_notes'],
   },
-  handler: (b, p) => b.call('synthesize', p),
+  handler: (b, p, t) => b.call('synthesize', p, t),
 };
 
 // ──────────────────────────── Delta Parameter Tools (Phase 5) ────────────────────────────
@@ -383,7 +383,7 @@ const adjustDynamics: ToolDefinition = {
     },
     required: ['track_id', 'section', 'curve_delta'],
   },
-  handler: (b, p) => b.call('adjust_dynamics', p),
+  handler: (b, p, t) => b.call('adjust_dynamics', p, t),
 };
 
 const adjustArticulation: ToolDefinition = {
@@ -401,7 +401,7 @@ const adjustArticulation: ToolDefinition = {
     },
     required: ['track_id', 'start', 'end'],
   },
-  handler: (b, p) => b.call('adjust_articulation', p),
+  handler: (b, p, t) => b.call('adjust_articulation', p, t),
 };
 
 const adjustVibrato: ToolDefinition = {
@@ -418,7 +418,7 @@ const adjustVibrato: ToolDefinition = {
     },
     required: ['track_id', 'start', 'end'],
   },
-  handler: (b, p) => b.call('adjust_vibrato', p),
+  handler: (b, p, t) => b.call('adjust_vibrato', p, t),
 };
 
 const adjustMicroTiming: ToolDefinition = {
@@ -442,7 +442,7 @@ const adjustMicroTiming: ToolDefinition = {
     },
     required: ['track_id', 'adjustments'],
   },
-  handler: (b, p) => b.call('adjust_micro_timing', p),
+  handler: (b, p, t) => b.call('adjust_micro_timing', p, t),
 };
 
 const adjustHarmonicColor: ToolDefinition = {
@@ -457,7 +457,7 @@ const adjustHarmonicColor: ToolDefinition = {
     },
     required: ['section'],
   },
-  handler: (b, p) => b.call('adjust_harmonic_color', p),
+  handler: (b, p, t) => b.call('adjust_harmonic_color', p, t),
 };
 
 const applySwing: ToolDefinition = {
@@ -471,7 +471,7 @@ const applySwing: ToolDefinition = {
     },
     required: ['track_id', 'ratio'],
   },
-  handler: (b, p) => b.call('apply_swing', p),
+  handler: (b, p, t) => b.call('apply_swing', p, t),
 };
 
 const applyRubato: ToolDefinition = {
@@ -495,7 +495,7 @@ const applyRubato: ToolDefinition = {
     },
     required: ['track_id', 'curve'],
   },
-  handler: (b, p) => b.call('apply_rubato', p),
+  handler: (b, p, t) => b.call('apply_rubato', p, t),
 };
 
 // ──────────────────────────── Version / Checkpoint Tools (Phase 7) ────────────────────────────
@@ -510,7 +510,7 @@ const projectSnapshot: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('project_snapshot', p),
+  handler: (b, p, t) => b.call('project_snapshot', p, t),
 };
 
 const projectDiffVersions: ToolDefinition = {
@@ -525,7 +525,7 @@ const projectDiffVersions: ToolDefinition = {
     },
     required: ['project', 'v1', 'v2'],
   },
-  handler: (b, p) => b.call('diff_versions', p),
+  handler: (b, p, t) => b.call('diff_versions', p, t),
 };
 
 const projectRollback: ToolDefinition = {
@@ -539,7 +539,7 @@ const projectRollback: ToolDefinition = {
     },
     required: ['project', 'version'],
   },
-  handler: (b, p) => b.call('rollback_to_version', p),
+  handler: (b, p, t) => b.call('rollback_to_version', p, t),
 };
 
 const projectListVersions: ToolDefinition = {
@@ -552,7 +552,7 @@ const projectListVersions: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('list_versions', p),
+  handler: (b, p, t) => b.call('list_versions', p, t),
 };
 
 // ──────────────────────────── Render Tools (Phase 8) ────────────────────────────
@@ -568,7 +568,7 @@ const renderPreview: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('render_preview', p),
+  handler: (b, p, t) => b.call('render_preview', p, t),
 };
 
 const renderFinal: ToolDefinition = {
@@ -583,7 +583,7 @@ const renderFinal: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('render_final', p),
+  handler: (b, p, t) => b.call('render_final', p, t),
 };
 
 // ──────────────────────────── Preference Tools (Phase 9) ────────────────────────────
@@ -601,7 +601,7 @@ const feedbackSubmit: ToolDefinition = {
     },
     required: ['project', 'version_id', 'score'],
   },
-  handler: (b, p) => b.call('feedback_submit', p),
+  handler: (b, p, t) => b.call('feedback_submit', p, t),
 };
 
 const feedbackABTest: ToolDefinition = {
@@ -617,7 +617,7 @@ const feedbackABTest: ToolDefinition = {
     },
     required: ['project', 'version_a', 'version_b', 'preferred'],
   },
-  handler: (b, p) => b.call('feedback_ab_test', p),
+  handler: (b, p, t) => b.call('feedback_ab_test', p, t),
 };
 
 // ──────────────────────────── Critic Tools (Phase 6) ────────────────────────────
@@ -634,7 +634,7 @@ const analyzeHarmony: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('analyze_harmony', p),
+  handler: (b, p, t) => b.call('analyze_harmony', p, t),
 };
 
 const analyzeMelody: ToolDefinition = {
@@ -649,7 +649,7 @@ const analyzeMelody: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('analyze_melody', p),
+  handler: (b, p, t) => b.call('analyze_melody', p, t),
 };
 
 const analyzeRhythm: ToolDefinition = {
@@ -663,7 +663,7 @@ const analyzeRhythm: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('analyze_rhythm', p),
+  handler: (b, p, t) => b.call('analyze_rhythm', p, t),
 };
 
 const analyzeAudio: ToolDefinition = {
@@ -677,7 +677,7 @@ const analyzeAudio: ToolDefinition = {
     },
     required: ['project'],
   },
-  handler: (b, p) => b.call('analyze_audio', p),
+  handler: (b, p, t) => b.call('analyze_audio', p, t),
 };
 
 // ──────────────────────────── Vocal Quality Tools (P0/P1) ────────────────────────────
@@ -708,7 +708,7 @@ const synthesizeMIDI: ToolDefinition = {
     },
     required: ['notes'],
   },
-  handler: (b, p) => b.call('synthesize_midi', p),
+  handler: (b, p, t) => b.call('synthesize_midi', p, t),
 };
 
 const analyzeVocalQuality: ToolDefinition = {
@@ -735,7 +735,7 @@ const analyzeVocalQuality: ToolDefinition = {
     },
     required: ['audio_path'],
   },
-  handler: (b, p) => b.call('analyze_vocal_quality', p),
+  handler: (b, p, t) => b.call('analyze_vocal_quality', p, t),
 };
 
 const adjustSynthesizedPitch: ToolDefinition = {
@@ -752,7 +752,7 @@ const adjustSynthesizedPitch: ToolDefinition = {
     },
     required: ['audio_path', 'start', 'end', 'correction_cents'],
   },
-  handler: (b, p) => b.call('adjust_synthesized_pitch', p),
+  handler: (b, p, t) => b.call('adjust_synthesized_pitch', p, t),
 };
 
 // ──────────────────────────── Registry ────────────────────────────

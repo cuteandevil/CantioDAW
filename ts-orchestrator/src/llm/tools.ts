@@ -8,7 +8,7 @@ export interface LLMToolDefinition {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
-  handler: (router: LLMRouter, bridge: PythonBridge, params: Record<string, unknown>) => Promise<{
+  handler: (router: LLMRouter, bridge: PythonBridge, params: Record<string, unknown>, token?: string) => Promise<{
     success: boolean;
     data?: unknown;
     error?: string;
@@ -204,7 +204,7 @@ const llmComposeSong: LLMToolDefinition = {
     },
     required: ['theme', 'project_name', 'model_path', 'config_path'],
   },
-  handler: async (router, bridge, params) => {
+  handler: async (router, bridge, params, t) => {
     // Step 1: Generate lyrics
     const langName = params.language === 'zh' ? 'Chinese' : 'English';
     const lyricsResult = await router.complete({
@@ -225,13 +225,13 @@ const llmComposeSong: LLMToolDefinition = {
     const phonemeLang = params.language === 'zh' ? 'zh' : 'en';
     const phonemeResult = await bridge.call('midi_lyrics_to_phonemes', {
       text: `${phonemeLang}: ${lyrics}`,
-    });
+    }, t);
 
     // Step 3: Create project
     const projectResult = await bridge.call('project_create', {
       name: params.project_name,
       bpm: params.bpm ?? 120,
-    });
+    }, t);
     const projectName = (projectResult.data as { name?: string })?.name ?? params.project_name;
 
     // Step 4: Add track
@@ -240,7 +240,7 @@ const llmComposeSong: LLMToolDefinition = {
       name: 'Melody',
       type: 'midi',
       color: '#4CAF50',
-    });
+    }, t);
 
     // Step 5: Synthesize
     const synthResult = await bridge.call('synthesize', {
@@ -249,7 +249,7 @@ const llmComposeSong: LLMToolDefinition = {
       pitch: params.pitch ?? 60,
       duration: 4.0,
       output_path: `${projectName}.wav`,
-    });
+    }, t);
 
     return ok({
       project: projectName,
@@ -417,7 +417,7 @@ const llmComposeMusic: LLMToolDefinition = {
     },
     required: ['description'],
   },
-  handler: async (router, bridge, params) => {
+  handler: async (router, bridge, params, t) => {
     const sections = (params.sections as string) ?? 'intro, verse, chorus, verse, chorus, bridge, chorus, outro';
 
     const systemPrompt = `You are a professional music composer and arranger. Output ONLY valid JSON.
@@ -500,7 +500,7 @@ ${params.description ? `\nAdditional: ${params.description}` : ''}`;
         waveform: (params.waveform as string) ?? 'sine',
         sample_rate: 24000,
         output_path: (params.output_path as string) || '',
-      });
+      }, t);
 
       return ok({
         title: arrangement.title ?? 'Untitled',
@@ -616,11 +616,11 @@ const llmQueryKnowledgeGraph: LLMToolDefinition = {
     },
     required: ['concept'],
   },
-  handler: async (_router, bridge, params) => {
+  handler: async (_router, bridge, params, t) => {
     return bridge.call('knowledge_graph_query', {
       concept: params.concept,
       direction: params.direction ?? 'affects',
-    });
+    }, t);
   },
 };
 
@@ -637,7 +637,7 @@ const llmComposeFromIntent: LLMToolDefinition = {
     },
     required: ['ir'],
   },
-  handler: async (router, bridge, params) => {
+  handler: async (router, bridge, params, t) => {
     const ir = params.ir as Record<string, unknown>;
     if (!ir) return err('ir is required');
 
@@ -657,7 +657,7 @@ const llmComposeFromIntent: LLMToolDefinition = {
           tempo: arrangement.tempo,
           waveform: 'piano',
           sample_rate: 24000,
-        });
+        }, t);
         if (midiResult.success) {
           result.audio = midiResult.data;
         }
@@ -683,12 +683,12 @@ const llmAnalyzeMusic: LLMToolDefinition = {
     },
     required: ['project'],
   },
-  handler: async (_router, bridge, params) => {
+  handler: async (_router, bridge, params, t) => {
     return bridge.call('analyze_music', {
       project: params.project,
       track_id: params.track_id,
       domains: params.domains,
-    });
+    }, t);
   },
 };
 
@@ -704,11 +704,11 @@ const llmRequestCheckpoint: LLMToolDefinition = {
     },
     required: ['project'],
   },
-  handler: async (_router, bridge, params) => {
+  handler: async (_router, bridge, params, t) => {
     return bridge.call('request_checkpoint', {
       project: params.project,
       message: params.message,
-    });
+    }, t);
   },
 };
 
