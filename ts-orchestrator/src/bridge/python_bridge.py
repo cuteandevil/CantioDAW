@@ -164,6 +164,29 @@ def _extract_track_audio_path(project_name: str, track_id: str):
     return None
 
 
+def _load_audio_data(params: dict, project_name: str, track_id: str = None):
+    """Load audio from params or track. Returns (audio_arr, sample_rate, stereo_width)."""
+    audio_arr = params.get("audio", None)
+    audio_path = params.get("audio_path", None)
+    sr = params.get("sample_rate", 44100)
+    if audio_path is None and audio_arr is None and track_id:
+        audio_path = _extract_track_audio_path(project_name, track_id)
+    if audio_path and audio_arr is None:
+        import soundfile as sf
+        audio_arr, sr = sf.read(audio_path)
+    if audio_arr is None:
+        return None, sr, 0.0
+    audio_arr = np.array(audio_arr)
+    stereo_width = 0.0
+    if audio_arr.ndim > 1 and audio_arr.shape[1] >= 2:
+        l, r = audio_arr[:, 0], audio_arr[:, 1]
+        if len(l) > 1:
+            corr = float(np.corrcoef(l, r)[0, 1])
+            stereo_width = max(0.0, 1.0 - abs(corr))
+        audio_arr = audio_arr.mean(axis=1)
+    return audio_arr, sr, stereo_width
+
+
 def _to_dict(obj):
     """Convert dataclass/nested object to JSON-safe dict."""
     if hasattr(obj, '__dataclass_fields__'):
@@ -730,23 +753,8 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 results["rhythm"] = _to_dict(critic.analyze(starts, durs, bpm))
             if "audio" in domains:
                 critic = AudioCritic()
-                audio_arr = params.get("audio", None)
-                audio_path = params.get("audio_path", None)
-                sr = params.get("sample_rate", 44100)
-                if audio_path is None and audio_arr is None and track_id:
-                    audio_path = _extract_track_audio_path(params["project"], track_id)
-                if audio_path and audio_arr is None:
-                    import soundfile as sf
-                    audio_arr, sr = sf.read(audio_path)
+                audio_arr, sr, stereo_width = _load_audio_data(params, params["project"], track_id)
                 if audio_arr is not None:
-                    audio_arr = np.array(audio_arr)
-                    stereo_width = 0.0
-                    if audio_arr.ndim > 1 and audio_arr.shape[1] >= 2:
-                        l, r = audio_arr[:, 0], audio_arr[:, 1]
-                        if len(l) > 1:
-                            corr = float(np.corrcoef(l, r)[0, 1])
-                            stereo_width = max(0.0, 1.0 - abs(corr))
-                        audio_arr = audio_arr.mean(axis=1)
                     analysis = critic.analyze(audio_arr, sr)
                     analysis.stereo_width = stereo_width
                     results["audio"] = _to_dict({
@@ -808,30 +816,18 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             })}
 
         elif method == "analyze_audio":
-            p = manager.load_project(params["project"])
-            audio_data = params.get("audio", None)
-            audio_path = params.get("audio_path", None)
-            sr = params.get("sample_rate", 44100)
-            if audio_path is None and audio_data is None and params.get("track_id"):
-                audio_path = _extract_track_audio_path(params["project"], params["track_id"])
             critic = AudioCritic()
-            if audio_path and audio_data is None:
-                import soundfile as sf
-                audio_data, sr = sf.read(audio_path)
-            if audio_data is not None:
-                audio_arr = np.array(audio_data)
-                stereo_width = 0.0
-                if audio_arr.ndim > 1 and audio_arr.shape[1] >= 2:
-                    l, r = audio_arr[:, 0], audio_arr[:, 1]
-                    if len(l) > 1:
-                        corr = float(np.corrcoef(l, r)[0, 1])
-                        stereo_width = max(0.0, 1.0 - abs(corr))
-                    audio_arr = audio_arr.mean(axis=1)
+            audio_arr, sr, stereo_width = _load_audio_data(params, params["project"], params.get("track_id"))
+            if audio_arr is not None:
                 analysis = critic.analyze(audio_arr, sr)
                 analysis.stereo_width = stereo_width
+                return {"success": True, "data": _to_dict({
+                    "analysis": analysis,
+                    "suggestions": critic.generate_suggestions(analysis.diagnoses),
+                })}
             return {"success": True, "data": _to_dict({
-                "analysis": analysis,
-                "suggestions": critic.generate_suggestions(analysis.diagnoses),
+                "analysis": AudioAnalysis(),
+                "suggestions": [],
             })}
 
         # ── Vocal Quality Tools ──
