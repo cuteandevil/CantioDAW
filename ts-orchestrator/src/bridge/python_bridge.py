@@ -731,10 +731,38 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             if "audio" in domains:
                 critic = AudioCritic()
                 audio_arr = params.get("audio", None)
-                results["audio"] = {
-                    "score": 1.0,
-                    "note": "Audio critic requires audio data. Use with actual audio samples.",
-                }
+                audio_path = params.get("audio_path", None)
+                sr = params.get("sample_rate", 44100)
+                if audio_path is None and audio_arr is None and track_id:
+                    audio_path = _extract_track_audio_path(params["project"], track_id)
+                if audio_path and audio_arr is None:
+                    import soundfile as sf
+                    audio_arr, sr = sf.read(audio_path)
+                if audio_arr is not None:
+                    audio_arr = np.array(audio_arr)
+                    stereo_width = 0.0
+                    if audio_arr.ndim > 1 and audio_arr.shape[1] >= 2:
+                        l, r = audio_arr[:, 0], audio_arr[:, 1]
+                        if len(l) > 1:
+                            corr = float(np.corrcoef(l, r)[0, 1])
+                            stereo_width = max(0.0, 1.0 - abs(corr))
+                        audio_arr = audio_arr.mean(axis=1)
+                    analysis = critic.analyze(audio_arr, sr)
+                    analysis.stereo_width = stereo_width
+                    results["audio"] = _to_dict({
+                        "analysis": analysis,
+                        "suggestions": critic.generate_suggestions(analysis.diagnoses),
+                    })
+                else:
+                    results["audio"] = _to_dict(
+                        AudioAnalysis(
+                            score=0.0, rms_level=-60.0, peak_level=0.0,
+                            crest_factor=0.0, dynamic_range=0.0,
+                            spectral_centroid=0.0, spectral_rolloff=0.0,
+                            stereo_width=0.0,
+                            diagnoses=["No audio data found for the given track."],
+                        )
+                    )
             return {"success": True, "data": results}
 
         elif method == "analyze_harmony":
