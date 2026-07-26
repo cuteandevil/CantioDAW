@@ -83,6 +83,7 @@ export interface RouterConfig {
   fallback: boolean;
   timeout: number;
   maxRetries: number;
+  usageLogPath?: string;
 }
 
 export interface LLMUsageRecord {

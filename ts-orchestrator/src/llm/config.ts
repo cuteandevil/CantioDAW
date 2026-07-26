@@ -2,6 +2,7 @@
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
+import * as path from 'path';
 
 const DEFAULT_OLLAMA_KEY = 'c7014dccda9c4510b50e58a938e04c16.wwdH7UhiNAB8BMuNYNggmyHQ';
 
@@ -11,6 +12,7 @@ export function createDefaultRouter(): LLMRouter {
     fallback: true,
     timeout: 120_000,
     maxRetries: 2,
+    usageLogPath: path.resolve(process.cwd(), '..', 'data', 'llm_usage.jsonl'),
   });
 
   const ollamaKey = process.env.OLLAMA_API_KEY || DEFAULT_OLLAMA_KEY;

@@ -10,6 +10,8 @@ import { LLMProvider } from './provider.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenAIProvider } from './providers/openai.js';
 import { AnthropicProvider } from './providers/anthropic.js';
+import * as fs from 'fs';
+import * as path from 'path';
 
 export class LLMRouter {
   private providers: Map<string, LLMProvider> = new Map();
@@ -23,7 +25,11 @@ export class LLMRouter {
       fallback: routerConfig?.fallback ?? true,
       timeout: routerConfig?.timeout ?? 120_000,
       maxRetries: routerConfig?.maxRetries ?? 2,
+      usageLogPath: routerConfig?.usageLogPath,
     };
+    if (this.config.usageLogPath) {
+      this._loadUsageFromDisk();
+    }
   }
 
   register(provider: LLMProvider): void {
@@ -192,5 +198,24 @@ export class LLMRouter {
     if (this.usageHistory.length > 1000) {
       this.usageHistory = this.usageHistory.slice(-500);
     }
+    if (this.config.usageLogPath) {
+      try {
+        const dir = path.dirname(this.config.usageLogPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.appendFileSync(this.config.usageLogPath, JSON.stringify(record) + '\n', 'utf-8');
+      } catch {}
+    }
+  }
+
+  private _loadUsageFromDisk(): void {
+    try {
+      const logPath = this.config.usageLogPath!;
+      if (!fs.existsSync(logPath)) return;
+      const content = fs.readFileSync(logPath, 'utf-8').trim();
+      if (!content) return;
+      for (const line of content.split('\n')) {
+        try { this.usageHistory.push(JSON.parse(line)); } catch {}
+      }
+    } catch {}
   }
 }
