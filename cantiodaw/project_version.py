@@ -79,15 +79,45 @@ class VersionManager:
         diffs: Dict[str, Dict] = {}
 
         for key in state1:
-            if key != "updated_at":
-                if state1.get(key) != state2.get(key):
-                    diffs[key] = {"from": state1.get(key), "to": state2.get(key)}
+            if key in ("updated_at", "tracks"):
+                continue
+            if state1.get(key) != state2.get(key):
+                diffs[key] = {"from": state1.get(key), "to": state2.get(key)}
+
+        tracks1 = {t["id"]: t for t in state1.get("tracks", [])}
+        tracks2 = {t["id"]: t for t in state2.get("tracks", [])}
+        ids1, ids2 = set(tracks1), set(tracks2)
+
+        track_changes = []
+        for tid in sorted(ids1 & ids2):
+            t1, t2 = tracks1[tid], tracks2[tid]
+            field_diffs = {}
+            for k in t1:
+                if t1[k] != t2[k]:
+                    field_diffs[k] = {"from": t1[k], "to": t2[k]}
+            if field_diffs:
+                track_changes.append({"track_id": tid, "track_name": t1.get("name", ""), "changes": field_diffs})
+
+        for tid in sorted(ids2 - ids1):
+            t = tracks2[tid]
+            track_changes.append({
+                "track_id": tid, "track_name": t.get("name", ""), "changes": "added",
+            })
+
+        for tid in sorted(ids1 - ids2):
+            t = tracks1[tid]
+            track_changes.append({
+                "track_id": tid, "track_name": t.get("name", ""), "changes": "removed",
+            })
+
+        if track_changes:
+            diffs["tracks"] = track_changes
 
         return {
             "v1": v1_id,
             "v2": v2_id,
             "changes": diffs,
-            "track_count_change": len(state2.get("tracks", [])) - len(state1.get("tracks", [])),
+            "track_count_change": len(tracks2) - len(tracks1),
         }
 
     def rollback(self, project: Project, version_id: str) -> bool:
@@ -124,6 +154,6 @@ class VersionManager:
         path = self.versions_dir / f"{version_id}.json"
         if not path.exists():
             return None
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             data = json.load(f)
         return VersionSnapshot(**data)

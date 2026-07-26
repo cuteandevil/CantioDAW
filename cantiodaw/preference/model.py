@@ -58,12 +58,12 @@ class PreferenceModel:
 
     def save(self, path: str) -> None:
         data = {"weights": self.weights}
-        with open(path, "w") as f:
+        with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2)
 
     def load(self, path: Optional[str] = None) -> None:
         p = Path(path) if path else self.model_path
         if p and p.exists():
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 data = json.load(f)
             self.weights = data.get("weights", {})

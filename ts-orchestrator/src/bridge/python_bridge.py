@@ -696,11 +696,14 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         # ── Phase 9: Preference Tools ──
         elif method == "feedback_submit":
+            comment = params.get("comment", "")
+            if isinstance(comment, str):
+                comment = comment.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
             fb = UserFeedback(
                 version_id=params["version_id"],
                 project_id=params["project"],
                 score=params["score"],
-                comment=params.get("comment"),
+                comment=comment,
             )
             preference_collector.record_feedback(fb)
             avg = preference_collector.get_average_score(params["project"])
