@@ -46,21 +46,46 @@ class Mixer:
         self.master_volume = 1.0
         self.channels: Dict[str, Dict[str, Any]] = {}
 
+    def _to_nchannels(self, audio: np.ndarray, nch: int) -> np.ndarray:
+        if audio.ndim == 1:
+            if nch == 1:
+                return audio
+            return np.column_stack([audio] * nch)
+        if audio.ndim == 2:
+            if nch == 1:
+                return audio.mean(axis=1)
+            if audio.shape[1] == nch:
+                return audio
+            if audio.shape[1] < nch:
+                return np.column_stack([audio[:, 0]] * nch)
+            return audio[:, :nch]
+        return audio
+
     def mix(self, tracks: Dict[str, np.ndarray]) -> np.ndarray:
-        max_len = max((len(a) for a in tracks.values()), default=0)
-        if max_len == 0:
+        if not tracks:
             return np.zeros(0, dtype=np.float32)
 
-        master = np.zeros(max_len, dtype=np.float32)
+        nch = 1
+        for audio in tracks.values():
+            if audio.ndim > 1 and audio.shape[1] > nch:
+                nch = audio.shape[1]
+
+        max_len = max((a.shape[0] for a in tracks.values()), default=0)
+
+        master = np.zeros((max_len, nch), dtype=np.float32) if nch > 1 else np.zeros(max_len, dtype=np.float32)
+
         for tid, audio in tracks.items():
             ch = self.channels.get(tid, {})
             if ch.get("mute", False):
                 continue
             vol = ch.get("volume", 1.0)
-            pan = ch.get("pan", 0.0)
-            if len(audio) < max_len:
-                audio = np.pad(audio, (0, max_len - len(audio)))
-            master += audio * vol * self.master_volume
+            processed = self._to_nchannels(audio, nch)
+            if processed.shape[0] < max_len:
+                if nch > 1:
+                    processed = np.pad(processed, ((0, max_len - processed.shape[0]), (0, 0)))
+                else:
+                    processed = np.pad(processed, (0, max_len - processed.shape[0]))
+            master += processed * vol * self.master_volume
 
         peak = np.max(np.abs(master))
         if peak > 1.0:
