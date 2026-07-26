@@ -54,7 +54,7 @@ from cantiodaw.music.labels import EMOTION_LABELS, SCENE_LABELS, STYLE_LABELS
 from cantiodaw.critic.harmony import HarmonyCritic
 from cantiodaw.critic.melody import MelodyCritic
 from cantiodaw.critic.rhythm import RhythmCritic
-from cantiodaw.critic.audio import AudioCritic, AudioAnalysis
+from cantiodaw.critic.audio import AudioCritic, AudioAnalysis, AudioDiagnosis
 from cantiodaw.critic.vocal import VocalCritic, VocalAnalysis
 from cantiodaw.preference.collector import PreferenceCollector, UserFeedback, ABTestResult
 from cantiodaw.project_version import VersionManager
@@ -756,11 +756,7 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 else:
                     results["audio"] = _to_dict(
                         AudioAnalysis(
-                            score=0.0, rms_level=-60.0, peak_level=0.0,
-                            crest_factor=0.0, dynamic_range=0.0,
-                            spectral_centroid=0.0, spectral_rolloff=0.0,
-                            stereo_width=0.0,
-                            diagnoses=["No audio data found for the given track."],
+                            diagnoses=[AudioDiagnosis("No audio data found for the given track.", 1.0)],
                         )
                     )
             return {"success": True, "data": results}
