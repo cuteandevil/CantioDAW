@@ -54,7 +54,7 @@ from cantiodaw.music.labels import EMOTION_LABELS, SCENE_LABELS, STYLE_LABELS
 from cantiodaw.critic.harmony import HarmonyCritic
 from cantiodaw.critic.melody import MelodyCritic
 from cantiodaw.critic.rhythm import RhythmCritic
-from cantiodaw.critic.audio import AudioCritic
+from cantiodaw.critic.audio import AudioCritic, AudioAnalysis
 from cantiodaw.critic.vocal import VocalCritic, VocalAnalysis
 from cantiodaw.preference.collector import PreferenceCollector, UserFeedback, ABTestResult
 from cantiodaw.project_version import VersionManager
