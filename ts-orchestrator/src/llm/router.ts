@@ -1,4 +1,4 @@
-import type {
+﻿import type {
   LLMCompletionRequest,
   LLMCompletionResponse,
   LLMProviderConfig,
@@ -9,6 +9,7 @@ import type {
 import { LLMProvider } from './provider.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenAIProvider } from './providers/openai.js';
+import { AnthropicProvider } from './providers/anthropic.js';
 
 export class LLMRouter {
   private providers: Map<string, LLMProvider> = new Map();
@@ -35,6 +36,9 @@ export class LLMRouter {
 
     const openai = new OpenAIProvider();
     if (openai.isAvailable()) this.register(openai);
+
+    const anthropic = new AnthropicProvider();
+    if (anthropic.isAvailable()) this.register(anthropic);
   }
 
   getProvider(name: string): LLMProvider | undefined {

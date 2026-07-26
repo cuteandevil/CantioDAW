@@ -1,6 +1,7 @@
-import { LLMRouter } from './router.js';
+﻿import { LLMRouter } from './router.js';
 import { OllamaProvider } from './providers/ollama.js';
 import { OpenAIProvider } from './providers/openai.js';
+import { AnthropicProvider } from './providers/anthropic.js';
 
 const DEFAULT_OLLAMA_KEY = 'c7014dccda9c4510b50e58a938e04c16.wwdH7UhiNAB8BMuNYNggmyHQ';
 
@@ -28,6 +29,16 @@ export function createDefaultRouter(): LLMRouter {
       priority: 20,
     });
     router.register(openai);
+  }
+
+  const anthropicKey = process.env.ANTHROPIC_API_KEY || '';
+  if (anthropicKey) {
+    const anthropic = new AnthropicProvider({
+      apiKey: anthropicKey,
+      defaultModel: process.env.ANTHROPIC_MODEL || '',
+      priority: 15,
+    });
+    router.register(anthropic);
   }
 
   return router;
