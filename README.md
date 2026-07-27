@@ -11,6 +11,10 @@
 
 <br>
 
+<a href="README.md">English</a> ｜ <a href="README_zh.md">简体中文</a>
+
+<br>
+
 <a href="#quick-start">Quick Start</a> ｜
 <a href="#tools">Tools (66)</a> ｜
 <a href="#pipeline">Pipeline</a> ｜
