@@ -1,6 +1,6 @@
 # CantioDAW · AI Agent Music Production Framework
 
-**AI agent-driven vocal/music production pipeline** with project + track workflow, multi-agent composition, automated critique and revision, and voice synthesis — built on TypeScript MCP orchestrator + Python audio core.
+**AI agent-driven vocal/music production pipeline** with project + track workflow, multi-agent composition, automated critique and revision, voice synthesis, and real-instrument SoundFont rendering — built on TypeScript MCP orchestrator + Python audio core.
 
 > **Offline batch processing** — generates MIDI and audio files for import into DAWs. Does not replace Ableton, REAPER, FL Studio, or any DAW for real-time recording, mixing, or live production.
 
@@ -24,22 +24,22 @@ Natural Language
 │  (parameter_mapper.py)      │
 └─────────────┬───────────────┘
               ↓
-    MIDI Generation /          ← 41 processing tools
+    MIDI Generation /          ← 57 DAW/MIDI tools
     Track Management
               ↓
 ┌─────────────────────────────┐
-│  Critic Agent (4 modules)  │  Harmony / Melody / Rhythm / Audio
+│  Critic Agent (5 modules)  │  Harmony / Melody / Rhythm / Audio / Vocal
 │  (critic/*.py)              │
 └─────────────┬───────────────┘
               ↓
 ┌─────────────────────────────┐
-│  Revision Agent             │  Diagnosis → fix plan → apply → verify
-│  (revision.ts)             │
+│  Revision Agent             │  Diagnosis → fix plan → apply → re-check (auto-loop)
+│  (revision_execute)         │
 └─────────────┬───────────────┘
               ↓
-       Optimization Loop      ← iteration with convergence control
+        Optimization Loop      ← iteration with convergence control
               ↓
-      Human Preference        ← ratings / A-B tests / adoption tracking
+       Human Preference        ← ratings / A-B tests / adoption tracking / favorites
 ```
 
 ## Pipeline
@@ -47,7 +47,9 @@ Natural Language
 ```
 Audio Dataset → Voice Training → Load Model → Compose MIDI + Lyrics → Synthesize → Mix → Export
                           ↑                          ↑
-                     SVC / RVC  ← auto-detect — Model Format Adapter
+                      SVC / RVC  ← auto-detect — Model Format Adapter
+                                         ↑
+                                   SoundFont (SF2/FluidSynth) — real instrument synthesis
 ```
 
 ## Quick Start
@@ -65,127 +67,128 @@ python -m cantiodaw serve
 # Open http://127.0.0.1:8080
 ```
 
-## TS Orchestrator — 56 Tools
+## TS Orchestrator — 70 Tools
 
-The orchestrator runs as an MCP server over stdio, exposing 56 tools (41 DAW/MIDI + 15 LLM) for project management, music generation, analysis, and export:
+The orchestrator runs as an MCP server over stdio, exposing 70 tools (57 DAW/MIDI + 13 LLM) for project management, music generation, analysis, and export. All tools are tagged with category labels: `[生成]` (generation), `[评价]` (evaluation), `[执行]` (execution), `[编排]` (orchestration).
 
-### Project & Track Tools (8)
+### Project & Track Tools (9)
 
-| Tool | Description |
-|------|-------------|
-| `project_create` | Create a new project |
-| `project_list` | List all projects |
-| `project_load` | Load project details |
-| `project_delete` | Delete a project |
-| `project_export` | Export project to audio |
-| `track_add` | Add audio/MIDI track |
-| `track_remove` | Remove a track |
-| `track_update` | Update track properties (volume, mute, name) |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `project_create` | `[执行]` | Create a new project |
+| `project_list` | `[执行]` | List all projects |
+| `project_load` | `[执行]` | Load project details |
+| `project_delete` | `[执行]` | Delete a project |
+| `project_export` | `[执行]` | Export project to audio |
+| `track_add` | `[执行]` | Add audio/MIDI track |
+| `track_remove` | `[执行]` | Remove a track |
+| `track_update` | `[执行]` | Update track properties (volume, mute, name) |
+| `track_add_clip` | `[执行]` | Add clip (MIDI notes, chords, or audio) to a track |
 
-### MIDI & Synthesis Tools (4)
+### MIDI & Synthesis Tools (6)
 
-| Tool | Description |
-|------|-------------|
-| `midi_notes_to_f0` | Convert MIDI notes to F0 contour for synthesis |
-| `midi_lyrics_to_phonemes` | Convert lyrics text to phonemes |
-| `synthesize` | Synthesize singing voice from MIDI + model |
-| `synthesize_midi` | Synthesize multi-track arrangement to WAV/MIDI |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `midi_notes_to_f0` | `[执行]` | Convert MIDI notes to F0 contour for synthesis |
+| `midi_lyrics_to_phonemes` | `[执行]` | Convert lyrics text to phonemes |
+| `synthesize` | `[生成]` | Synthesize singing voice from MIDI + model |
+| `synthesize_midi` | `[生成]` | Synthesize multi-track arrangement via SoundFont or oscillator fallback |
+| `list_soundfonts` | `[执行]` | List available SoundFont (.sf2/.sf3) files and instruments |
+| `download_soundfont` | `[执行]` | Download FluidR3_GM.sf2 (144 MB) for real instrument synthesis |
 
 ### Audio Processing Tools (3)
 
-| Tool | Description |
-|------|-------------|
-| `effect_apply` | Apply audio effect (reverb, EQ, compressor) |
-| `mix_tracks` | Mix multiple tracks to single audio |
-| `export_stems` | Export each track as separate stem |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `effect_apply` | `[执行]` | Apply audio effect (reverb, EQ, compressor) |
+| `mix_tracks` | `[执行]` | Mix multiple tracks to single audio (MIDI tracks auto-synthesized via SoundFont) |
+| `export_stems` | `[执行]` | Export each track as separate stem |
 
-### Voice Training Tools (2)
+### Voice Training Tools (3)
 
-| Tool | Description |
-|------|-------------|
-| `train_prepare` | Prepare voice dataset from audio directory |
-| `train_start` | Start voice model training |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `train_prepare` | `[执行]` | Prepare voice dataset from audio directory |
+| `train_start` | `[执行]` | Start voice model training |
+| `train_voice_from_audio` | `[执行]` | Full workflow: prepare → train voice model |
 
-### Orchestration Tools (3)
+### Orchestration Tools (4)
 
-| Tool | Description |
-|------|-------------|
-| `compose_song` | End-to-end: create project → add tracks → synthesize |
-| `train_voice_from_audio` | Full workflow: prepare → train voice model |
-| `apply_voice_to_midi` | Apply voice model to MIDI notes → singing audio |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `compose_song` | `[生成]` | End-to-end: create project → add tracks → synthesize |
+| `apply_voice_to_midi` | `[执行]` | Apply voice model to MIDI notes → singing audio |
+| `revision_execute` | `[编排]` | Critic→fix→re-check revision loop with convergence control |
+| `parameter_reference` | `[执行]` | Query physical parameter mappings (MIDI CC→DAW, instrument→GM program) |
 
 ### Parameter Adjustment Tools (7)
 
-| Tool | Description |
-|------|-------------|
-| `adjust_dynamics` | Adjust dynamics curve for a track section |
-| `adjust_articulation` | Adjust articulation (legato/staccato) and attack |
-| `adjust_vibrato` | Adjust vibrato depth and rate |
-| `adjust_micro_timing` | Adjust micro-timing offsets per note |
-| `adjust_harmonic_color` | Adjust harmonic quality/mode |
-| `apply_swing` | Apply swing feel to a track |
-| `apply_rubato` | Apply tempo rubato curve |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `adjust_dynamics` | `[执行]` | Adjust dynamics curve for a track section |
+| `adjust_articulation` | `[执行]` | Adjust articulation (legato/staccato) and attack |
+| `adjust_vibrato` | `[执行]` | Adjust vibrato depth and rate |
+| `adjust_micro_timing` | `[执行]` | Adjust micro-timing offsets per note |
+| `adjust_harmonic_color` | `[执行]` | Adjust harmonic quality/mode |
+| `apply_swing` | `[执行]` | Apply swing feel to a track |
+| `apply_rubato` | `[执行]` | Apply tempo rubato curve |
 
 ### Version Management Tools (4)
 
-| Tool | Description |
-|------|-------------|
-| `project_snapshot` | Create version snapshot |
-| `diff_versions` | Compare two project versions |
-| `rollback_to_version` | Rollback to a specific version |
-| `list_versions` | List all version snapshots |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `project_snapshot` | `[执行]` | Create version snapshot |
+| `diff_versions` | `[执行]` | Compare two project versions (shows only changed tracks) |
+| `rollback_to_version` | `[执行]` | Rollback to a specific version |
+| `list_versions` | `[执行]` | List all version snapshots (merged from disk + memory) |
 
 ### Render Tools (2)
 
-| Tool | Description |
-|------|-------------|
-| `render_preview` | Quick low-quality preview render |
-| `render_final` | Full-quality final render |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `render_preview` | `[执行]` | Quick low-quality preview render (MIDI tracks auto-synthesized) |
+| `render_final` | `[执行]` | Full-quality final render (MIDI tracks auto-synthesized) |
 
-### Feedback Tools (2)
+### Preference & Feedback Tools (5)
 
-| Tool | Description |
-|------|-------------|
-| `feedback_submit` | Submit user rating (1-5) for a version |
-| `feedback_ab_test` | Submit A/B test preference |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `feedback_submit` | `[执行]` | Submit user rating (1-5) for a version |
+| `feedback_ab_test` | `[执行]` | Submit A/B test preference |
+| `list_feedback` | `[执行]` | List all feedback with scores, AB tests, adoption rate, replay counts |
+| `track_replay` | `[执行]` | Record a replay event for a version |
+| `track_favorite` | `[执行]` | Record/toggle favorite status for a version |
 
-### Critic Analysis Tools (5)
+### Critic Analysis Tools (6)
 
-| Tool | Description |
-|------|-------------|
-| `analyze_harmony` | Harmonic function, tension curve analysis |
-| `analyze_melody` | Motif, contour, interval analysis |
-| `analyze_rhythm` | Groove, density, stability analysis |
-| `analyze_audio` | Spectral, dynamic, spatial analysis |
-| `analyze_vocal_quality` | Synthesized vocal F0 deviation vs target MIDI, electrical/robotic artifacts, voicing breaks |
+| Tool | Category | Description |
+|------|----------|-------------|
+| `analyze_harmony` | `[评价]` | Harmonic function, tension curve analysis |
+| `analyze_melody` | `[评价]` | Motif, contour, interval analysis |
+| `analyze_rhythm` | `[评价]` | Groove, density, stability analysis |
+| `analyze_audio` | `[评价]` | Spectral, dynamic, spatial analysis |
+| `analyze_vocal_quality` | `[评价]` | Pitch deviation vs target MIDI, electrical/robotic artifacts, voicing breaks |
+| `adjust_synthesized_pitch` | `[执行]` | Localized pitch correction on synthesized audio segment |
 
-### Audio Correction Tools (1)
+### LLM Tools (13)
 
-*Post-synthesis (音频层) — operates on rendered audio, unlike Pre-Synthesis adjust_* tools which operate on score parameters.*
-
-| Tool | Description |
-|------|-------------|
-| `adjust_synthesized_pitch` | Localized pitch correction on synthesized audio segment without re-rendering the whole track |
-
-### LLM Tools (15)
-
-| Tool | Purpose |
-|------|---------|
-| `llm_chat` | General LLM chat |
-| `llm_stream` | Streaming LLM chat |
-| `llm_generate_lyrics` | Lyrics generation |
-| `llm_compose_song` | End-to-end song composition |
-| `llm_suggest_arrangement` | Arrangement suggestions |
-| `llm_analyze_lyrics` | Lyric analysis |
-| `llm_compose_music` | Direct MIDI composition |
-| `llm_list_providers` | Provider listing |
-| `llm_list_models` | Model listing |
-| `llm_usage_stats` | Usage statistics |
-| `llm_parse_intent` | NL → Music Semantic IR |
-| `llm_query_knowledge_graph` | Knowledge graph query |
-| `llm_compose_from_intent` | IR → Arrangement |
-| `llm_analyze_music` | Multi-domain music critic |
-| `llm_request_checkpoint` | Human checkpoint request |
+| Tool | Category | Purpose |
+|------|----------|---------|
+| `llm_chat` | `[执行]` | General LLM chat (auto-routing) |
+| `llm_stream` | `[执行]` | Streaming LLM chat |
+| `llm_generate_lyrics` | `[生成]` | Lyrics generation |
+| `llm_compose_song` | `[生成]` | End-to-end song composition with synthesis |
+| `llm_suggest_arrangement` | `[编排]` | Arrangement suggestions |
+| `llm_analyze_lyrics` | `[评价]` | Lyric analysis (sentiment, themes) |
+| `llm_compose_music` | `[生成]` | Direct MIDI composition from description |
+| `llm_list_providers` | `[执行]` | Provider listing |
+| `llm_list_models` | `[执行]` | Model listing |
+| `llm_usage_stats` | `[执行]` | Usage statistics (persistent across restarts) |
+| `llm_parse_intent` | `[编排]` | NL → Music Semantic IR |
+| `llm_query_knowledge_graph` | `[编排]` | Knowledge graph concept → parameter mapping |
+| `llm_compose_from_intent` | `[生成]` | IR → Arrangement with MIDI notes |
+| `llm_analyze_music` | `[评价]` | Multi-domain music critic (aggregates all 4 modules) |
+| `llm_request_checkpoint` | `[执行]` | Human checkpoint request (mandatory/optional) |
 
 ## Music Semantic IR
 
@@ -223,6 +226,42 @@ effects = kg.query("tension")
 concepts = kg.reverse_query("harmony.dissonance")
 ```
 
+## Parameter Mapping
+
+Physical parameter reference for AI agents — query via `parameter_reference` tool:
+
+```python
+from cantiodaw.music.parameter_mapping import (
+    MIDI_CC_MAP,           # MIDI CC → DAW tool mapping (10 standard CCs)
+    INSTRUMENT_TO_PROGRAM, # Instrument name → GM program number (80+ instruments)
+    PARAMETER_REFERENCE,   # adjust_* tool input → physical effect reference
+    resolve_instrument,    # Resolve name to program: "violin" → 40
+)
+```
+
+## SoundFont Real-Instrument Synthesis
+
+MIDI tracks can be rendered through SoundFont (.sf2/.sf3) files via FluidSynth for real instrument sounds, with automatic oscillator fallback:
+
+```python
+from cantiodaw.synthesis.soundfont import SoundFontSynth
+
+# Auto-detect SoundFont files from data/soundfonts/
+synth = SoundFontSynth.create()
+
+# Render MIDI notes with GM program (0=piano, 40=violin, 48=strings)
+audio = synth.render(notes, tempo=120, program=0)
+
+# Check if FluidSynth is available
+print(synth.available)  # True if pyfluidsynth loaded, False uses oscillator fallback
+```
+
+SoundFont support:
+- **FluidSynth path**: Install `pyfluidsynth` + native FluidSynth library → real instrument rendering
+- **Oscillator fallback**: If FluidSynth unavailable → sine/triangle/sawtooth oscillators
+- **Auto-download**: `download_soundfont` tool → FluidR3_GM.sf2 (144 MB, 128 GM instruments)
+- **Per-clip program**: Each MIDI clip can specify its own GM program for multi-instrument tracks
+
 ## Critic System (5 Analysis Modules)
 
 | Module | Analysis Scope | Diagnostics |
@@ -258,8 +297,8 @@ concepts = kg.reverse_query("harmony.dissonance")
 | `apply_voice` | Convert lyrics → F0 contour → Synthesize |
 | `mix_export` | Mix tracks → Export stems |
 | `compose_from_intent` | Parse NL intent → Compose from IR → MIDI preview |
-| `critic_revise` | Snapshot → Analyze → Snapshot → Preview |
-| `full_pipeline` | NL → IR → Compose → Critic → Diff → Final export |
+| `critic_revise` | Snapshot → Revision loop (auto-analyze→fix→re-check) → Snapshot → Preview |
+| `full_pipeline` | NL → IR → Compose → Critic → Revision (auto-loop) → Diff → Final export |
 
 ```bash
 node ts-orchestrator/dist/index.js worklist
@@ -283,51 +322,49 @@ Generated MIDI → analyze_harmony + analyze_melody
 
 ### Self-Correction
 ```
-Generate → Critic → Revise Agent → apply adjust_* → Preview
-→ Iteration with convergence control (max 5 rounds)
+Generate → Critic → revision_execute (auto-loop: analyze→fix→re-check) → Preview
+→ Iteration with convergence control (max 5 rounds, threshold 0.8)
 ```
 
 ### Full Pipeline
 ```
 "凌晨三点开车…孤独但希望"
-→ Auto compose → Auto critique → Auto revise → Final export
-→ Human feedback collected
+→ Auto compose → Auto critique → Auto revise (convergence loop) → Final export
+→ Human feedback collected (ratings, favorites, replays)
 ```
 
 ## Convergence Control (Revision Loop)
 
-When the Revision Agent runs iteratively, it follows these rules:
+The `revision_execute` tool runs the critic→fix→re-check loop automatically:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
 | Max iterations | 5 | Hard stop after this many rounds |
-| Quality threshold | 0.8 (score) | If critic score ≥ 0.8, stop even if iterations remain |
-| No-improvement limit | 3 consecutive rounds | If critic score doesn't improve for 3 rounds, stop and emit warning |
-| Convergence check | per-iteration | After each revision, re-run critics and compare scores |
+| Quality threshold | 0.8 (severity) | If average severity drops below threshold, stop |
+| No-improvement limit | 3 consecutive rounds | If severity doesn't decrease for 3 rounds, stop |
+| Re-check | per-iteration | After each fix round, re-run all critics and compare |
 
-When the loop stops but hasn't converged (score < 0.8):
-- If a `request_checkpoint` was placed, pause and wait for human decision
-- Otherwise, output the **best version seen so far** (not the final iteration)
-
-These limits are **global defaults**. Per-project overrides can be set via `request_checkpoint` tool parameters.
+When the loop stops but hasn't converged:
+- If a `request_checkpoint` (type=`mandatory`) was placed, pause and wait for human decision
+- Otherwise, output the **best version seen so far**
 
 ## Preference Feedback
 
 Collected data flows through:
 
 ```
-User rating (1-5) / A/B test
-        ↓
-PreferenceCollector  →  JSONL storage (feedback.jsonl / abtest.jsonl / adoption.jsonl)
-        ↓
+User rating (1-5) / A/B test / Replay / Favorite
+         ↓
+PreferenceCollector  →  JSONL storage (feedback.jsonl / abtest.jsonl / replays.jsonl / favorites.jsonl)
+         ↓
+list_feedback  →  returns all data (scores, AB tests, replay counts, favorite status)
+         ↓
 PreferenceModel.train(samples)  →  learns feature weights
-        ↓
+         ↓
 PreferenceModel.adjust_critic_score(critic_score, features)
-        ↓
+         ↓
 Weighted score used in Revision Agent's convergence check
 ```
-
-**Status**: Data collection is fully implemented. The preference model's output currently adjusts critic scores during revision convergence. It is **not yet** consumed by the Composer Agent or Intent Agent at generation time — that is planned future work.
 
 ## DAW Collaboration
 
@@ -356,20 +393,16 @@ DAW: Open .mid → assign BBCSO/Spitfire → listen immediately
      Like it? Keep. Don't? Rewrite prompt, regenerate.
 ```
 
-No blank page anxiety — AI gives you a structured starting point in seconds.
-
 ### Scenario 2: Iterative Arrangement
 
 ```
-1. Run full_pipeline: compose → critic → revise → export .mid
+1. Run full_pipeline: compose → critic → revision_execute (auto-loop) → export .mid
 2. Open in DAW, listen
 3. If a section's chord progression is wrong:
    - Option A: adjust prompt and regenerate that section only
    - Option B: edit MIDI directly in DAW, keep the rest
 4. Repeat until structure is right
 ```
-
-CantioDAW handles the **macro structure** (form, harmony, emotion arc). DAW handles the **micro details** (timbre, articulation, mix).
 
 ### Scenario 3: Vocal Synthesis Front-End
 
@@ -378,7 +411,7 @@ CantioDAW handles the **macro structure** (form, harmony, emotion arc). DAW hand
 2. synthesize → raw vocal WAV stem
 3. Import vocal stem into DAW as an audio track
 4. Build accompaniment around it in DAW
-5. Use adjust_* tools for pitch/timing correction without retraining
+5. Use adjust_synthesized_pitch for pitch correction without retraining
 ```
 
 ### Scenario 4: Analysis Assistant
@@ -391,17 +424,16 @@ CantioDAW: Run analyze_harmony / analyze_melody / analyze_rhythm
 DAW: Go back and fix those specific bars
 ```
 
-The Critic system provides **objective diagnostics** you can act on in your DAW.
-
 ### Summary
 
 | CantioDAW does (offline) | DAW does (real-time) |
 |--------------------------|----------------------|
 | NL → structured arrangement | VST instrument playback |
 | Multi-track MIDI generation | Audio recording & editing |
-| Harmony/melody/rhythm analysis | Mixing, FX, mastering |
+| Harmony/melody/rhythm/audio/vocal analysis | Mixing, FX, mastering |
 | Voice synthesis (raw WAV) | Arrangement fine-tuning |
 | Version diff & rollback | Live performance |
+| SoundFont real-instrument rendering | |
 
 ## CLI Usage
 
@@ -425,9 +457,10 @@ cantiodaw detect --model so-vits-svc/G_10000.pth
 | Format | Source | Usage |
 |--------|--------|-------|
 | **MIDI** (`.mid`) | Composer Agent → `export_midi` | Multi-track arrangement. Import into DAW with VST instruments for proper playback |
-| **WAV — Synth Preview** (`.wav`) | `synthesize_midi` | Basic waveform (sine/triangle/sawtooth oscillators per track type). Quick preview of arrangement structure, not suitable for production |
+| **WAV — SoundFont** (`.wav`) | `synthesize_midi` via FluidSynth | Real instrument sound via GM SoundFont (.sf2). Requires pyfluidsynth + .sf2 file |
+| **WAV — Synth Preview** (`.wav`) | `synthesize_midi` oscillator fallback | Basic waveform (sine/triangle/sawtooth oscillators). Quick preview when no SoundFont available |
 | **WAV — Neural SVC** (`.wav`) | `synthesize` with trained SVC/RVC model | Neural vocoder singing voice output. Quality depends on voice model training |
-| **JSON** | Critics, IR, version diff tools | Analysis results, IR data, version diffs |
+| **JSON** | Critics, IR, version diff, feedback tools | Analysis results, IR data, version diffs, preference records |
 
 ## Environment
 
@@ -453,44 +486,55 @@ OPENAI_API_KEY      OpenAI API key (optional)
 - Python 3.9+, PyTorch 2.0+, Node.js 18+
 - `pip install -e .` for Python
 - `npm install` in `ts-orchestrator/` for TypeScript
+- Optional: `pip install pyfluidsynth` for SoundFont real-instrument synthesis
 
 ## Project Structure
 
 ```
 cantiodaw/
-├── music/                  # Music IR, Knowledge Graph, Parameter Mapper
-│   ├── ir.py              # MusicIR data structures (Python truth source)
-│   ├── knowledge_graph.py # Graph query engine
-│   ├── knowledge_graph.yaml # 11 concept nodes
-│   ├── parameter_mapper.py # Emotion → parameter mapping tables
-│   └── labels.py          # Emotion/Scene/Style label taxonomies
-├── critic/                 # 4-module music analysis
-│   ├── harmony.py         # Chord function, tension curve
-│   ├── melody.py          # Motif detection, interval analysis
-│   ├── rhythm.py          # Groove, density, stability
-│   └── audio.py           # Spectral, dynamic, spatial analysis
-├── preference/             # Human feedback learning
-│   ├── collector.py       # Rating, A/B test, adoption tracking
-│   └── model.py           # Preference weighting model
-└── project_version.py     # Version snapshots, diff, rollback
+├── music/                     # Music IR, Knowledge Graph, Parameter Mapping
+│   ├── ir.py                 # MusicIR data structures (Python truth source)
+│   ├── knowledge_graph.py    # Graph query engine
+│   ├── knowledge_graph.yaml  # 11 concept nodes
+│   ├── parameter_mapper.py   # Emotion → parameter mapping tables
+│   ├── parameter_mapping.py  # MIDI CC→DAW, instrument→GM, adjust_* reference
+│   └── labels.py             # Emotion/Scene/Style label taxonomies
+├── critic/                    # 5-module music analysis
+│   ├── harmony.py            # Chord function, tension curve
+│   ├── melody.py             # Motif detection, interval analysis
+│   ├── rhythm.py             # Groove, density, stability
+│   ├── audio.py              # Spectral, dynamic, spatial analysis
+│   └── vocal.py              # Pitch deviation, electrical artifacts, voicing breaks
+├── synthesis/                 # Audio synthesis
+│   ├── svs_engine.py         # Singing voice synthesis engine
+│   ├── lyrics_aligner.py     # Lyrics-to-phoneme alignment
+│   ├── soundfont.py          # SoundFontSynth (FluidSynth + oscillator fallback)
+│   └── sf2_download.py       # FluidR3_GM.sf2 auto-download
+├── preference/                # Human feedback learning
+│   ├── collector.py          # Rating, A/B test, adoption, replay, favorite tracking
+│   └── model.py              # Preference weighting model
+├── versioning/                # Project version management
+│   └── version.py            # Version snapshots, diff, rollback (disk + memory)
+└── config.yaml               # Project configuration (paths, synthesis, training, webui)
 
 ts-orchestrator/
 ├── src/
-│   ├── mcp/tools.ts       # 41 processing tool definitions
-│   ├── llm/tools.ts       # 15 LLM tool definitions
-│   ├── llm/prompts/       # Intent parser + composer prompts
-│   ├── music/ir.ts        # TypeScript MusicIR mirror
+│   ├── mcp/tools.ts          # 57 DAW/MIDI tool definitions
+│   ├── llm/tools.ts          # 13 LLM tool definitions
+│   ├── llm/prompts/          # Intent parser + composer prompts
+│   ├── music/ir.ts           # TypeScript MusicIR mirror + labels
 │   ├── orchestrator/
-│   │   ├── composer.ts    # Composer Agent (IR → arrangement)
-│   │   ├── revision.ts    # Revision Agent (prioritize + fix)
-│   │   └── workflows.ts   # 7 predefined workflows
-│   └── bridge/            # Python ↔ TypeScript bridge
+│   │   ├── composer.ts       # Composer Agent (IR → arrangement)
+│   │   ├── revision.ts       # Revision Agent (prioritize + fix)
+│   │   ├── workflows.ts      # 7 predefined workflows
+│   │   └── engine.ts         # Workflow execution engine
+│   └── bridge/               # Python ↔ TypeScript bridge (stdio JSON-RPC)
 ```
 
 ## Limitations
 
 - **Not a real-time DAW** — all processing is offline/batch. Does not replace Ableton, REAPER, FL Studio, or similar for live recording, mixing, or real-time production.
-- **WAV synthesis quality is dual-track**: `synthesize_midi` uses basic oscillators (sine/triangle/sawtooth) for arrangement preview. Neural SVC `synthesize` quality depends entirely on the trained voice model. These are separate paths with different quality characteristics.
+- **WAV synthesis has multiple quality tiers**: SoundFont (FluidSynth + .sf2 = real instruments) > Neural SVC (trained model dependent) > Oscillator (basic waveforms for preview).
 - **LLM-dependent composition** — arrangement quality varies by model and prompt. Results require human review and editing.
 - **Research-grade** — suitable for experimentation with AI-driven composition and voice synthesis, not for commercial music production out of the box.
 
