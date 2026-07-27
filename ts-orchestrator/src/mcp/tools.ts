@@ -249,13 +249,14 @@ const effectApply: ToolDefinition = {
 
 const mixTracks: ToolDefinition = {
   name: 'mix_tracks',
-  description: '[执行] Mix multiple tracks in a project to a single audio file',
+  description: '[执行] Mix multiple tracks in a project to a single audio file. MIDI tracks are synthesized via SoundFont (if available) or oscillator fallback.',
   inputSchema: {
     type: 'object',
     properties: {
       project: { type: 'string' },
       track_ids: { type: 'array', items: { type: 'string' }, description: 'Tracks to include (all if omitted)' },
       output_path: { type: 'string', default: 'mixdown.wav' },
+      soundfont_path: { type: 'string', description: 'Path to .sf2 SoundFont file for MIDI track synthesis' },
     },
     required: ['project'],
   },
@@ -602,12 +603,13 @@ const projectListVersions: ToolDefinition = {
 
 const renderPreview: ToolDefinition = {
   name: 'render_preview',
-  description: '[执行] Quick preview render at low quality. Use during iterative workflow.',
+  description: '[执行] Quick preview render at low quality. Use during iterative workflow. MIDI tracks rendered via SoundFont if available.',
   inputSchema: {
     type: 'object',
     properties: {
       project: { type: 'string' },
       output_path: { type: 'string', default: 'preview.wav' },
+      soundfont_path: { type: 'string', description: 'Path to .sf2 SoundFont file for MIDI track synthesis' },
     },
     required: ['project'],
   },
@@ -616,13 +618,14 @@ const renderPreview: ToolDefinition = {
 
 const renderFinal: ToolDefinition = {
   name: 'render_final',
-  description: '[执行] Full quality final render. Use when the composition is finalized.',
+  description: '[执行] Full quality final render. Use when the composition is finalized. MIDI tracks rendered via SoundFont if available.',
   inputSchema: {
     type: 'object',
     properties: {
       project: { type: 'string' },
       output_path: { type: 'string', default: 'final.wav' },
       sample_rate: { type: 'integer', default: 44100 },
+      soundfont_path: { type: 'string', description: 'Path to .sf2 SoundFont file for MIDI track synthesis' },
     },
     required: ['project'],
   },
@@ -826,6 +829,20 @@ const listSoundfonts: ToolDefinition = {
   handler: (b, p, t) => b.call('list_soundfonts', p, t),
 };
 
+const downloadSoundfont: ToolDefinition = {
+  name: 'download_soundfont',
+  description: '[执行] Download FluidR3_GM.sf2 SoundFont file (144 MB) to data/soundfonts/. Required for real instrument synthesis. Skips if already exists.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      url: { type: 'string', description: 'Custom download URL (optional, uses default FluidR3_GM.sf2 mirror)' },
+      dest_dir: { type: 'string', description: 'Destination directory (default: data/soundfonts/)' },
+      filename: { type: 'string', default: 'FluidR3_GM.sf2' },
+    },
+  },
+  handler: (b, p, t) => b.call('download_soundfont', p, t),
+};
+
 const parameterReference: ToolDefinition = {
   name: 'parameter_reference',
   description: '[执行] Query physical parameter mappings: MIDI CC→DAW tools, instrument name→GM program, adjust_* tool parameter reference',
@@ -949,6 +966,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   // Synthesis (was missing from registry)
   synthesizeMIDI,
   listSoundfonts,
+  downloadSoundfont,
   parameterReference,
 ];
 

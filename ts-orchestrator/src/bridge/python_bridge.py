@@ -197,7 +197,7 @@ def _to_dict(obj):
         return {k: _to_dict(v) for k, v in obj.items()}
     return obj
 
-def _mix_project(project_name: str, track_ids=None):
+def _mix_project(project_name: str, track_ids=None, soundfont_path=None):
     """Shared helper: load project, create mixer, add audio/MIDI clips. Returns mixer or None."""
     p = manager.load_project(project_name)
     mixer = Mixer(p.sample_rate)
@@ -205,7 +205,7 @@ def _mix_project(project_name: str, track_ids=None):
         if track_ids is not None and t.id not in track_ids:
             continue
         if t.type == "midi":
-            _add_midi_track_to_mixer(mixer, t, p)
+            _add_midi_track_to_mixer(mixer, t, p, soundfont_path)
             continue
         for clip in t.clips:
             path = clip.get("path", "")
@@ -217,21 +217,32 @@ def _mix_project(project_name: str, track_ids=None):
     return mixer
 
 
-def _add_midi_track_to_mixer(mixer, track, project):
+def _add_midi_track_to_mixer(mixer, track, project, soundfont_path=None):
     from cantiodaw.synthesis.soundfont import SoundFontSynth
-    notes = []
+    track_program = getattr(track, "program", 0) or 0
+    # Group notes by program for per-clip instrument support
+    programs: dict = {}
     for clip in track.clips:
-        if "notes" in clip:
-            notes.extend(clip["notes"])
-    if not notes:
+        if "notes" not in clip:
+            continue
+        prog = clip.get("program", track_program)
+        if prog not in programs:
+            programs[prog] = []
+        programs[prog].extend(clip["notes"])
+    if not programs:
         return
-    synth = SoundFontSynth.create(sample_rate=mixer.sample_rate)
-    program = getattr(track, "program", 0) or 0
-    audio = synth.render(notes, project.bpm, program, 0)
-    track_id = f"_synth_{track.id}"
-    mixer.set_channel(track_id, volume=getattr(track, "volume", 1.0))
-    mixer.channels[track_id]["audio"] = audio.astype(np.float32)
-    mixer.channels[track_id]["mute"] = getattr(track, "mute", False)
+    channel_idx = 0
+    for prog, notes in programs.items():
+        synth = SoundFontSynth.create(
+            soundfont_path=soundfont_path,
+            sample_rate=mixer.sample_rate,
+        )
+        audio = synth.render(notes, project.bpm, prog, 0)
+        tid = f"_synth_{track.id}_{prog}" if len(programs) > 1 else f"_synth_{track.id}"
+        mixer.set_channel(tid, volume=getattr(track, "volume", 1.0))
+        mixer.channels[tid]["audio"] = audio.astype(np.float32)
+        mixer.channels[tid]["mute"] = getattr(track, "mute", False)
+        channel_idx += 1
 
 def handle(method: str, params: dict, token: str = "") -> dict:
     try:
@@ -424,7 +435,8 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             }}
 
         elif method == "mix_tracks":
-            mixer = _mix_project(params["project"], params.get("track_ids", None))
+            mixer = _mix_project(params["project"], params.get("track_ids", None),
+                                 params.get("soundfont_path", None))
             if mixer is None:
                 return {"success": False, "data": None, "error": "No audio clips to mix"}
             out = params.get("output_path", "mixdown.wav")
@@ -667,7 +679,7 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
         # ── Phase 8: Render Tools ──
         elif method == "render_preview":
-            mixer = _mix_project(params["project"])
+            mixer = _mix_project(params["project"], soundfont_path=params.get("soundfont_path", None))
             if mixer is None:
                 return {"success": False, "data": None, "error": "No audio clips to render"}
             out = params.get("output_path", "preview.wav")
@@ -675,7 +687,7 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             return {"success": True, "data": {"output_path": out, "quality": "preview"}}
 
         elif method == "render_final":
-            mixer = _mix_project(params["project"])
+            mixer = _mix_project(params["project"], soundfont_path=params.get("soundfont_path", None))
             if mixer is None:
                 return {"success": False, "data": None, "error": "No audio clips to render"}
             out = params.get("output_path", "final.wav")
@@ -996,6 +1008,15 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 "count": len(found),
                 "tip": "Place .sf2 files in data/soundfonts/ or install pyfluidsynth",
             }}
+
+        elif method == "download_soundfont":
+            from cantiodaw.synthesis.sf2_download import download_soundfont
+            result = download_soundfont(
+                url=params.get("url", None),
+                dest_dir=params.get("dest_dir", None),
+                filename=params.get("filename", "FluidR3_GM.sf2"),
+            )
+            return {"success": True, "data": result}
 
         elif method == "parameter_reference":
             from cantiodaw.music.parameter_mapping import (
