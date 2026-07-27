@@ -997,6 +997,34 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 "tip": "Place .sf2 files in data/soundfonts/ or install pyfluidsynth",
             }}
 
+        elif method == "parameter_reference":
+            from cantiodaw.music.parameter_mapping import (
+                PARAMETER_REFERENCE, INSTRUMENT_TO_PROGRAM, MIDI_CC_MAP,
+                resolve_instrument,
+            )
+            tool_name = params.get("tool", "")
+            instrument = params.get("instrument", "")
+            result = {}
+            if tool_name and tool_name in PARAMETER_REFERENCE:
+                result["tool"] = {tool_name: PARAMETER_REFERENCE[tool_name]}
+            elif not tool_name:
+                result["tools"] = PARAMETER_REFERENCE
+            if instrument:
+                prog = resolve_instrument(instrument)
+                result["instrument"] = {"name": instrument, "program": prog}
+            elif "list_instruments" in params:
+                result["instruments"] = {
+                    k: v for k, v in sorted(INSTRUMENT_TO_PROGRAM.items())[:50]
+                }
+            result["midi_cc_map"] = {
+                str(cc): info["name"] for cc, info in MIDI_CC_MAP.items()
+            }
+            result["reference_note"] = (
+                "All adjust_* tools use delta values (relative), not absolute. "
+                "Meaning: curve_delta=0.2 adds 20% more energy, NOT sets energy to 0.2."
+            )
+            return {"success": True, "data": result}
+
         elif method == "analyze_vocal_quality":
             audio_data = params.get("audio", None)
             audio_path = params.get("audio_path", None)

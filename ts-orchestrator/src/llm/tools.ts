@@ -26,7 +26,7 @@ function err(msg: string) {
 // ── llm_chat ──────────────────────────────────────
 const llmChat: LLMToolDefinition = {
   name: 'llm_chat',
-  description: 'Send a chat message to the LLM and get a response. Uses automatic provider/model routing.',
+  description: '[执行] Send a chat message to the LLM and get a response. Uses automatic provider/model routing.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -85,7 +85,7 @@ const llmChat: LLMToolDefinition = {
 // ── llm_stream ─────────────────────────────────────
 const llmStream: LLMToolDefinition = {
   name: 'llm_stream',
-  description: 'Stream a chat response from the LLM. Returns full response after completion.',
+  description: '[执行] Stream a chat response from the LLM. Returns full response after completion.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -136,7 +136,7 @@ const llmStream: LLMToolDefinition = {
 // ── llm_generate_lyrics ───────────────────────────
 const llmGenerateLyrics: LLMToolDefinition = {
   name: 'llm_generate_lyrics',
-  description: 'Generate song lyrics using LLM. Specify theme, style, language, and structure.',
+  description: '[生成] Generate song lyrics using LLM. Specify theme, style, language, and structure.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -189,7 +189,7 @@ Output only the lyrics, no explanations. Use song structure markers like [Verse]
 // ── llm_compose_song ──────────────────────────────
 const llmComposeSong: LLMToolDefinition = {
   name: 'llm_compose_song',
-  description: 'End-to-end song composition: generate lyrics with LLM + create project + synthesize using voice model.',
+  description: '[生成] End-to-end song composition: generate lyrics with LLM + create project + synthesize using voice model.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -265,7 +265,7 @@ const llmComposeSong: LLMToolDefinition = {
 // ── llm_suggest_arrangement ───────────────────────
 const llmSuggestArrangement: LLMToolDefinition = {
   name: 'llm_suggest_arrangement',
-  description: 'Get AI-suggested music arrangement for a song based on style and mood.',
+  description: '[编排] Get AI-suggested music arrangement for a song based on style and mood.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -314,7 +314,7 @@ Provide: intro, verse, chorus, bridge, outro structure with instrument layers an
 // ── llm_analyze_lyrics ────────────────────────────
 const llmAnalyzeLyrics: LLMToolDefinition = {
   name: 'llm_analyze_lyrics',
-  description: 'Analyze lyrics for sentiment, themes, keywords, and suggest musical interpretation.',
+  description: '[评价] Analyze lyrics for sentiment, themes, keywords, and suggest musical interpretation.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -361,7 +361,7 @@ const llmAnalyzeLyrics: LLMToolDefinition = {
 // ── llm_list_providers ────────────────────────────
 const llmListProviders: LLMToolDefinition = {
   name: 'llm_list_providers',
-  description: 'List all registered LLM providers and their availability.',
+  description: '[执行] List all registered LLM providers and their availability.',
   inputSchema: { type: 'object', properties: {} },
   handler: async (router, _bridge, _params) => {
     const providers = router.getProviders();
@@ -382,7 +382,7 @@ const llmListProviders: LLMToolDefinition = {
 // ── llm_list_models ───────────────────────────────
 const llmListModels: LLMToolDefinition = {
   name: 'llm_list_models',
-  description: 'List all available models across all registered LLM providers.',
+  description: '[执行] List all available models across all registered LLM providers.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -401,7 +401,7 @@ const llmListModels: LLMToolDefinition = {
 // ── llm_compose_music ─────────────────────────────
 const llmComposeMusic: LLMToolDefinition = {
   name: 'llm_compose_music',
-  description: 'Directly compose/arrange music using LLM: describe a piece and get back a structured arrangement with synthesized audio.',
+  description: '[生成] Directly compose/arrange music using LLM: describe a piece and get back a structured arrangement with synthesized audio.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -530,7 +530,7 @@ ${params.description ? `\nAdditional: ${params.description}` : ''}`;
 // ── llm_parse_intent ──────────────────────────────
 const llmParseIntent: LLMToolDefinition = {
   name: 'llm_parse_intent',
-  description: 'Parse natural language music description into Music Semantic IR (emotion, energy, style, scene, arrangement).',
+  description: '[编排] Parse natural language music description into Music Semantic IR (emotion, energy, style, scene, arrangement).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -607,7 +607,7 @@ const llmParseIntent: LLMToolDefinition = {
 // ── llm_query_knowledge_graph ────────────────────
 const llmQueryKnowledgeGraph: LLMToolDefinition = {
   name: 'llm_query_knowledge_graph',
-  description: 'Query the music knowledge graph for parameter mappings related to a concept (e.g. tension, sadness, hope).',
+  description: '[编排] Query the music knowledge graph for parameter mappings related to a concept (e.g. tension, sadness, hope).',
   inputSchema: {
     type: 'object',
     properties: {
@@ -627,7 +627,7 @@ const llmQueryKnowledgeGraph: LLMToolDefinition = {
 // ── llm_compose_from_intent ──────────────────────
 const llmComposeFromIntent: LLMToolDefinition = {
   name: 'llm_compose_from_intent',
-  description: 'Compose a musical arrangement from a MusicIR using the Composer Agent. Returns structured arrangement with sections, chords, melody notes.',
+  description: '[生成] Compose a musical arrangement from a MusicIR using the Composer Agent. Returns structured arrangement with sections, chords, melody notes.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -673,7 +673,7 @@ const llmComposeFromIntent: LLMToolDefinition = {
 // ── llm_analyze_music ────────────────────────────
 const llmAnalyzeMusic: LLMToolDefinition = {
   name: 'llm_analyze_music',
-  description: 'Run music analysis (critic) on a project or track. Analyzes harmony, melody, rhythm, and audio quality.',
+  description: '[评价] Run music analysis (critic) on a project or track. Analyzes harmony, melody, rhythm, and audio quality.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -695,7 +695,7 @@ const llmAnalyzeMusic: LLMToolDefinition = {
 // ── llm_request_checkpoint ───────────────────────
 const llmRequestCheckpoint: LLMToolDefinition = {
   name: 'llm_request_checkpoint',
-  description: 'Request a human checkpoint during automated workflow. Mandatory checkpoints pause execution until approved; optional ones are informational only. Returns current vs previous version key metric comparison.',
+  description: '[执行] Request a human checkpoint during automated workflow. Mandatory checkpoints pause execution until approved; optional ones are informational only. Returns current vs previous version key metric comparison.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -717,7 +717,7 @@ const llmRequestCheckpoint: LLMToolDefinition = {
 // ── llm_usage_stats ───────────────────────────────
 const llmUsageStats: LLMToolDefinition = {
   name: 'llm_usage_stats',
-  description: 'Get LLM usage statistics (calls, tokens, failures tracked during this session).',
+  description: '[执行] Get LLM usage statistics (calls, tokens, failures tracked during this session).',
   inputSchema: { type: 'object', properties: {} },
   handler: async (router, _bridge, _params) => {
     return ok(router.getUsageSummary());

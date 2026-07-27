@@ -22,7 +22,7 @@ function err(msg: string): PythonResult {
 
 const projectCreate: ToolDefinition = {
   name: 'project_create',
-  description: 'Create a new CantioDAW project',
+  description: '[执行] Create a new CantioDAW project',
   inputSchema: {
     type: 'object',
     properties: {
@@ -36,14 +36,14 @@ const projectCreate: ToolDefinition = {
 
 const projectList: ToolDefinition = {
   name: 'project_list',
-  description: 'List all CantioDAW projects',
+  description: '[执行] List all CantioDAW projects',
   inputSchema: { type: 'object', properties: {} },
   handler: (b, _p, _t) => b.call('project_list', _p, _t),
 };
 
 const projectLoad: ToolDefinition = {
   name: 'project_load',
-  description: 'Load project details',
+  description: '[执行] Load project details',
   inputSchema: {
     type: 'object',
     properties: { name: { type: 'string' } },
@@ -54,7 +54,7 @@ const projectLoad: ToolDefinition = {
 
 const projectDelete: ToolDefinition = {
   name: 'project_delete',
-  description: 'Delete a project',
+  description: '[执行] Delete a project',
   inputSchema: {
     type: 'object',
     properties: { name: { type: 'string' } },
@@ -68,7 +68,7 @@ const projectDelete: ToolDefinition = {
 
 const projectExport: ToolDefinition = {
   name: 'project_export',
-  description: 'Export a project to audio files',
+  description: '[执行] Export a project to audio files',
   inputSchema: {
     type: 'object',
     properties: {
@@ -85,7 +85,7 @@ const projectExport: ToolDefinition = {
 
 const trackAdd: ToolDefinition = {
   name: 'track_add',
-  description: 'Add a track to a project',
+  description: '[执行] Add a track to a project',
   inputSchema: {
     type: 'object',
     properties: {
@@ -101,7 +101,7 @@ const trackAdd: ToolDefinition = {
 
 const trackRemove: ToolDefinition = {
   name: 'track_remove',
-  description: 'Remove a track from a project',
+  description: '[执行] Remove a track from a project',
   inputSchema: {
     type: 'object',
     properties: {
@@ -115,7 +115,7 @@ const trackRemove: ToolDefinition = {
 
 const trackUpdate: ToolDefinition = {
   name: 'track_update',
-  description: 'Update track properties (volume, mute, name)',
+  description: '[执行] Update track properties (volume, mute, name)',
   inputSchema: {
     type: 'object',
     properties: {
@@ -132,7 +132,7 @@ const trackUpdate: ToolDefinition = {
 
 const trackAddClip: ToolDefinition = {
   name: 'track_add_clip',
-  description: 'Add a clip (MIDI notes, chords, or audio reference) to a track',
+  description: '[执行] Add a clip (MIDI notes, chords, or audio reference) to a track',
   inputSchema: {
     type: 'object',
     properties: {
@@ -170,7 +170,7 @@ const trackAddClip: ToolDefinition = {
 
 const midiNotesToF0: ToolDefinition = {
   name: 'midi_notes_to_f0',
-  description: 'Convert MIDI notes to an F0 contour for synthesis',
+  description: '[执行] Convert MIDI notes to an F0 contour for synthesis',
   inputSchema: {
     type: 'object',
     properties: {
@@ -196,7 +196,7 @@ const midiNotesToF0: ToolDefinition = {
 
 const midiLyricsToPhonemes: ToolDefinition = {
   name: 'midi_lyrics_to_phonemes',
-  description: 'Convert lyrics text to phonemes for singing synthesis',
+  description: '[执行] Convert lyrics text to phonemes for singing synthesis',
   inputSchema: {
     type: 'object',
     properties: {
@@ -211,7 +211,7 @@ const midiLyricsToPhonemes: ToolDefinition = {
 
 const synthesize: ToolDefinition = {
   name: 'synthesize',
-  description: 'Synthesize singing voice from MIDI notes using a trained model',
+  description: '[生成] Synthesize singing voice from MIDI notes using a trained model',
   inputSchema: {
     type: 'object',
     properties: {
@@ -234,7 +234,7 @@ const synthesize: ToolDefinition = {
 
 const effectApply: ToolDefinition = {
   name: 'effect_apply',
-  description: 'Apply an audio effect (reverb, EQ, compressor) to audio data',
+  description: '[执行] Apply an audio effect (reverb, EQ, compressor) to audio data',
   inputSchema: {
     type: 'object',
     properties: {
@@ -249,7 +249,7 @@ const effectApply: ToolDefinition = {
 
 const mixTracks: ToolDefinition = {
   name: 'mix_tracks',
-  description: 'Mix multiple tracks in a project to a single audio file',
+  description: '[执行] Mix multiple tracks in a project to a single audio file',
   inputSchema: {
     type: 'object',
     properties: {
@@ -264,7 +264,7 @@ const mixTracks: ToolDefinition = {
 
 const exportStems: ToolDefinition = {
   name: 'export_stems',
-  description: 'Export each track in a project as a separate audio stem',
+  description: '[执行] Export each track in a project as a separate audio stem',
   inputSchema: {
     type: 'object',
     properties: {
@@ -280,7 +280,7 @@ const exportStems: ToolDefinition = {
 
 const trainPrepare: ToolDefinition = {
   name: 'train_prepare',
-  description: 'Prepare a voice dataset from a directory of audio files',
+  description: '[执行] Prepare a voice dataset from a directory of audio files',
   inputSchema: {
     type: 'object',
     properties: {
@@ -294,7 +294,7 @@ const trainPrepare: ToolDefinition = {
 
 const trainStart: ToolDefinition = {
   name: 'train_start',
-  description: 'Start training a voice model with prepared dataset',
+  description: '[执行] Start training a voice model with prepared dataset',
   inputSchema: {
     type: 'object',
     properties: {
@@ -312,7 +312,7 @@ const trainStart: ToolDefinition = {
 
 const composeSong: ToolDefinition = {
   name: 'compose_song',
-  description: 'End-to-end song composition: create project, add tracks, synthesize from description',
+  description: '[生成] End-to-end song composition: create project, add tracks, synthesize from description',
   inputSchema: {
     type: 'object',
     properties: {
@@ -352,7 +352,7 @@ const composeSong: ToolDefinition = {
 
 const trainVoiceFromAudio: ToolDefinition = {
   name: 'train_voice_from_audio',
-  description: 'Complete workflow: prepare dataset and train a voice model from audio files',
+  description: '[执行] Complete workflow: prepare dataset and train a voice model from audio files',
   inputSchema: {
     type: 'object',
     properties: {
@@ -379,7 +379,7 @@ const trainVoiceFromAudio: ToolDefinition = {
 
 const applyVoiceToMIDI: ToolDefinition = {
   name: 'apply_voice_to_midi',
-  description: 'Apply a trained voice model to MIDI notes to generate singing audio',
+  description: '[执行] Apply a trained voice model to MIDI notes to generate singing audio',
   inputSchema: {
     type: 'object',
     properties: {
@@ -409,7 +409,7 @@ const applyVoiceToMIDI: ToolDefinition = {
 
 const adjustDynamics: ToolDefinition = {
   name: 'adjust_dynamics',
-  description: 'Adjust dynamics curve for a track section (delta-based)',
+  description: '[执行] Adjust dynamics curve for a track section (delta-based)',
   inputSchema: {
     type: 'object',
     properties: {
@@ -425,7 +425,7 @@ const adjustDynamics: ToolDefinition = {
 
 const adjustArticulation: ToolDefinition = {
   name: 'adjust_articulation',
-  description: 'Adjust articulation style and overlap for a note range',
+  description: '[执行] Adjust articulation style and overlap for a note range',
   inputSchema: {
     type: 'object',
     properties: {
@@ -444,7 +444,7 @@ const adjustArticulation: ToolDefinition = {
 
 const adjustVibrato: ToolDefinition = {
   name: 'adjust_vibrato',
-  description: 'Adjust vibrato depth and rate for a note range',
+  description: '[执行] Adjust vibrato depth and rate for a note range',
   inputSchema: {
     type: 'object',
     properties: {
@@ -462,7 +462,7 @@ const adjustVibrato: ToolDefinition = {
 
 const adjustMicroTiming: ToolDefinition = {
   name: 'adjust_micro_timing',
-  description: 'Adjust micro-timing offsets for individual notes',
+  description: '[执行] Adjust micro-timing offsets for individual notes',
   inputSchema: {
     type: 'object',
     properties: {
@@ -487,7 +487,7 @@ const adjustMicroTiming: ToolDefinition = {
 
 const adjustHarmonicColor: ToolDefinition = {
   name: 'adjust_harmonic_color',
-  description: 'Adjust harmonic color (quality, mode) for a section',
+  description: '[执行] Adjust harmonic color (quality, mode) for a section',
   inputSchema: {
     type: 'object',
     properties: {
@@ -503,7 +503,7 @@ const adjustHarmonicColor: ToolDefinition = {
 
 const applySwing: ToolDefinition = {
   name: 'apply_swing',
-  description: 'Apply swing feel to a track',
+  description: '[执行] Apply swing feel to a track',
   inputSchema: {
     type: 'object',
     properties: {
@@ -518,7 +518,7 @@ const applySwing: ToolDefinition = {
 
 const applyRubato: ToolDefinition = {
   name: 'apply_rubato',
-  description: 'Apply tempo rubato curve to a track',
+  description: '[执行] Apply tempo rubato curve to a track',
   inputSchema: {
     type: 'object',
     properties: {
@@ -545,7 +545,7 @@ const applyRubato: ToolDefinition = {
 
 const projectSnapshot: ToolDefinition = {
   name: 'project_snapshot',
-  description: 'Create a version snapshot of the current project state',
+  description: '[执行] Create a version snapshot of the current project state',
   inputSchema: {
     type: 'object',
     properties: {
@@ -558,7 +558,7 @@ const projectSnapshot: ToolDefinition = {
 
 const projectDiffVersions: ToolDefinition = {
   name: 'diff_versions',
-  description: 'Compare two project versions and show differences',
+  description: '[执行] Compare two project versions and show differences',
   inputSchema: {
     type: 'object',
     properties: {
@@ -573,7 +573,7 @@ const projectDiffVersions: ToolDefinition = {
 
 const projectRollback: ToolDefinition = {
   name: 'rollback_to_version',
-  description: 'Rollback a project to a specific version snapshot',
+  description: '[执行] Rollback a project to a specific version snapshot',
   inputSchema: {
     type: 'object',
     properties: {
@@ -587,7 +587,7 @@ const projectRollback: ToolDefinition = {
 
 const projectListVersions: ToolDefinition = {
   name: 'list_versions',
-  description: 'List all version snapshots for a project',
+  description: '[执行] List all version snapshots for a project',
   inputSchema: {
     type: 'object',
     properties: {
@@ -602,7 +602,7 @@ const projectListVersions: ToolDefinition = {
 
 const renderPreview: ToolDefinition = {
   name: 'render_preview',
-  description: 'Quick preview render at low quality. Use during iterative workflow.',
+  description: '[执行] Quick preview render at low quality. Use during iterative workflow.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -616,7 +616,7 @@ const renderPreview: ToolDefinition = {
 
 const renderFinal: ToolDefinition = {
   name: 'render_final',
-  description: 'Full quality final render. Use when the composition is finalized.',
+  description: '[执行] Full quality final render. Use when the composition is finalized.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -633,7 +633,7 @@ const renderFinal: ToolDefinition = {
 
 const feedbackSubmit: ToolDefinition = {
   name: 'feedback_submit',
-  description: 'Submit user feedback (score 1-5) for a project version',
+  description: '[执行] Submit user feedback (score 1-5) for a project version',
   inputSchema: {
     type: 'object',
     properties: {
@@ -649,7 +649,7 @@ const feedbackSubmit: ToolDefinition = {
 
 const feedbackABTest: ToolDefinition = {
   name: 'feedback_ab_test',
-  description: 'Submit A/B test result choosing preferred version',
+  description: '[执行] Submit A/B test result choosing preferred version',
   inputSchema: {
     type: 'object',
     properties: {
@@ -665,7 +665,7 @@ const feedbackABTest: ToolDefinition = {
 
 const feedbackList: ToolDefinition = {
   name: 'list_feedback',
-  description: 'List all recorded feedback for a project, including scores, AB test results, average score, and adoption rate',
+  description: '[执行] List all recorded feedback for a project, including scores, AB test results, average score, and adoption rate',
   inputSchema: {
     type: 'object',
     properties: {
@@ -678,7 +678,7 @@ const feedbackList: ToolDefinition = {
 
 const trackReplay: ToolDefinition = {
   name: 'track_replay',
-  description: 'Record a replay event for a project version (user listened to this version)',
+  description: '[执行] Record a replay event for a project version (user listened to this version)',
   inputSchema: {
     type: 'object',
     properties: {
@@ -692,7 +692,7 @@ const trackReplay: ToolDefinition = {
 
 const trackFavorite: ToolDefinition = {
   name: 'track_favorite',
-  description: 'Record or toggle favorite status for a project version',
+  description: '[执行] Record or toggle favorite status for a project version',
   inputSchema: {
     type: 'object',
     properties: {
@@ -709,7 +709,7 @@ const trackFavorite: ToolDefinition = {
 
 const analyzeHarmony: ToolDefinition = {
   name: 'analyze_harmony',
-  description: 'Run harmony analysis on a project track',
+  description: '[评价] Run harmony analysis on a project track',
   inputSchema: {
     type: 'object',
     properties: {
@@ -724,7 +724,7 @@ const analyzeHarmony: ToolDefinition = {
 
 const analyzeMelody: ToolDefinition = {
   name: 'analyze_melody',
-  description: 'Run melody analysis on a project track',
+  description: '[评价] Run melody analysis on a project track',
   inputSchema: {
     type: 'object',
     properties: {
@@ -739,7 +739,7 @@ const analyzeMelody: ToolDefinition = {
 
 const analyzeRhythm: ToolDefinition = {
   name: 'analyze_rhythm',
-  description: 'Run rhythm analysis on a project track',
+  description: '[评价] Run rhythm analysis on a project track',
   inputSchema: {
     type: 'object',
     properties: {
@@ -753,7 +753,7 @@ const analyzeRhythm: ToolDefinition = {
 
 const analyzeAudio: ToolDefinition = {
   name: 'analyze_audio',
-  description: 'Run audio quality analysis on a project track or audio file',
+  description: '[评价] Run audio quality analysis on a project track or audio file',
   inputSchema: {
     type: 'object',
     properties: {
@@ -767,7 +767,7 @@ const analyzeAudio: ToolDefinition = {
 
 const revisionExecute: ToolDefinition = {
   name: 'revision_execute',
-  description: 'Run critic→fix→re-check revision loop with convergence control. Analyzes project, applies top fixes, re-analyzes to confirm improvement. Stops when quality threshold met, no improvement, or max iterations reached.',
+  description: '[编排] Run critic→fix→re-check revision loop with convergence control. Analyzes project, applies top fixes, re-analyzes to confirm improvement. Stops when quality threshold met, no improvement, or max iterations reached.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -786,7 +786,7 @@ const revisionExecute: ToolDefinition = {
 
 const synthesizeMIDI: ToolDefinition = {
   name: 'synthesize_midi',
-  description: 'Synthesize multi-track arrangement to WAV using SoundFont real instruments (when available) or oscillator fallback (sine/triangle/sawtooth). Supports GM program/bank selection.',
+  description: '[生成] Synthesize multi-track arrangement to WAV using SoundFont real instruments (when available) or oscillator fallback (sine/triangle/sawtooth). Supports GM program/bank selection.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -818,7 +818,7 @@ const synthesizeMIDI: ToolDefinition = {
 
 const listSoundfonts: ToolDefinition = {
   name: 'list_soundfonts',
-  description: 'List available SoundFont (.sf2/.sf3) files found in data/soundfonts/ and other search paths. Shows whether each is loaded and how many instruments it contains.',
+  description: '[执行] List available SoundFont (.sf2/.sf3) files found in data/soundfonts/ and other search paths. Shows whether each is loaded and how many instruments it contains.',
   inputSchema: {
     type: 'object',
     properties: {},
@@ -826,9 +826,23 @@ const listSoundfonts: ToolDefinition = {
   handler: (b, p, t) => b.call('list_soundfonts', p, t),
 };
 
+const parameterReference: ToolDefinition = {
+  name: 'parameter_reference',
+  description: '[执行] Query physical parameter mappings: MIDI CC→DAW tools, instrument name→GM program, adjust_* tool parameter reference',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      tool: { type: 'string', description: 'Specific tool name to query (optional, returns all if omitted)' },
+      instrument: { type: 'string', description: 'Instrument name to resolve to GM program number' },
+      list_instruments: { type: 'boolean', description: 'Set true to list all instrument→program mappings' },
+    },
+  },
+  handler: (b, p, t) => b.call('parameter_reference', p, t),
+};
+
 const analyzeVocalQuality: ToolDefinition = {
   name: 'analyze_vocal_quality',
-  description: 'Analyze synthesized vocal quality: pitch deviation vs target MIDI, electrical/robotic artifacts, voicing breaks',
+  description: '[评价] Analyze synthesized vocal quality: pitch deviation vs target MIDI, electrical/robotic artifacts, voicing breaks',
   inputSchema: {
     type: 'object',
     properties: {
@@ -855,7 +869,7 @@ const analyzeVocalQuality: ToolDefinition = {
 
 const adjustSynthesizedPitch: ToolDefinition = {
   name: 'adjust_synthesized_pitch',
-  description: 'Localized pitch correction on synthesized audio. Only re-renders the specified time segment.',
+  description: '[执行] Localized pitch correction on synthesized audio. Only re-renders the specified time segment.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -935,6 +949,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   // Synthesis (was missing from registry)
   synthesizeMIDI,
   listSoundfonts,
+  parameterReference,
 ];
 
 export function getTool(name: string): ToolDefinition | undefined {
