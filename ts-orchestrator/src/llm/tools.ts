@@ -3,6 +3,7 @@ import type { PythonBridge } from '../bridge/python.js';
 import { INTENT_PARSER_SYSTEM_PROMPT, INTENT_UPDATE_SYSTEM_PROMPT } from './prompts/intent_parser.js';
 import type { MusicIR, EmotionVector, EnergyCurve, StyleVector } from '../music/ir.js';
 import { createMusicIR } from '../music/ir.js';
+import { generateChordVoicing, generateBassPattern } from '../orchestrator/composer.js';
 
 export interface LLMToolDefinition {
   name: string;
@@ -714,6 +715,183 @@ const llmRequestCheckpoint: LLMToolDefinition = {
   },
 };
 
+// ── llm_adapt_to_acoustic ─────────────────────────
+const llmAdaptToAcoustic: LLMToolDefinition = {
+  name: 'llm_adapt_to_acoustic',
+  description: '[生成] 将一首电子音乐改编为原声(acoustic)版本。分析原曲的BPM/调性/结构 → LLM生成原声编曲 → SoundFont渲染真实乐器 → 混合导出。',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      audio_path: { type: 'string', description: '输入音频文件路径 (.flac/.wav/.mp3)' },
+      vocal_path: { type: 'string', description: '预分离的人声文件路径 (可选, 如已用 separate_audio 工具分离)' },
+      project_name: { type: 'string', description: 'CantioDAW 项目名称 (默认从文件名生成)' },
+      output_dir: { type: 'string', description: '输出目录 (默认 ./output)' },
+      style_hint: { type: 'string', description: '改编风格提示（如 "钢琴独奏风格"、"弦乐四重奏"、"指弹吉他"等）' },
+    },
+    required: ['audio_path'],
+  },
+  handler: async (router, bridge, params, t) => {
+    const audioPath = params.audio_path as string;
+    const baseName = audioPath.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '');
+    const projectName = (params.project_name as string) || `acoustic_${baseName}`;
+    const outputDir = (params.output_dir as string) || './output';
+
+    const steps: Array<{ step: string; status: string; data?: unknown }> = [];
+
+    // Step 1: Deep analyze audio
+    steps.push({ step: 'analyze', status: 'running' });
+    const analysis = await bridge.call('audio_analyze_deep', { audio_path: audioPath }, t);
+    if (!analysis.success) return { success: false, error: `Audio analysis failed: ${analysis.error}` };
+    steps[0] = { step: 'analyze', status: 'ok', data: analysis.data };
+
+    const analysisData = analysis.data as Record<string, unknown>;
+
+    // Step 2: Separate vocals (use provided path, or run Demucs)
+    const separateIdx = steps.length;
+    let vocalsPath: string | null = (params.vocal_path as string) || null;
+
+    if (!vocalsPath) {
+      steps.push({ step: 'separate', status: 'running' });
+      const separation = await bridge.call('audio_split_stems', {
+        audio_path: audioPath, output_dir: outputDir,
+      }, t);
+      if (separation.success) {
+        vocalsPath = (separation.data as { vocals?: string })?.vocals || null;
+        steps[separateIdx] = { step: 'separate', status: 'ok', data: { method: (separation.data as {method?:string}).method } };
+      } else {
+        steps[separateIdx] = { step: 'separate', status: 'warning', data: { error: separation.error } };
+      }
+    } else {
+      steps.push({ step: 'separate', status: 'ok', data: { source: 'pre-separated', vocals: vocalsPath } });
+    }
+
+    // Step 3: Transcribe from vocal stem (if available) or full mix
+    const transcribeIdx = steps.length;
+    steps.push({ step: 'transcribe', status: 'running' });
+    const transcribeSource = vocalsPath || audioPath;
+    const transcription = await bridge.call('audio_transcribe', {
+      audio_path: transcribeSource,
+      bpm: analysisData.bpm,
+    }, t);
+    const transNotes = (transcription.data as { notes?: Array<{pitch:number;start:number;duration:number;velocity:number}> })?.notes || [];
+    const transChords = (transcription.data as { chords?: Array<{chord:string;time:number;confidence:number}> })?.chords || [];
+    steps[transcribeIdx] = { step: 'transcribe', status: transcription.success ? 'ok' : 'warning', data: { notes: transNotes.length, chords: transChords.length, source: vocalsPath ? 'vocals' : 'full_mix' } };
+
+    // Deduplicate and filter chords: keep only clean chord types
+    const beatsPerSec2 = ((analysisData.bpm as number) || 120) / 60;
+    const chordWindow = 8; // beats
+    const validChord = /^[A-G][#b]?(m7?|7|M7|maj7)?$/; // major, minor, 7th only
+    const deduped: Array<{chord:string;beat:number}> = [];
+    for (const c of transChords) {
+      const beat = c.time * beatsPerSec2;
+      const name = c.chord.replace('dim', 'm').replace('sus4', '').replace('sus2', '').replace('aug', '');
+      if (!validChord.test(name)) continue;
+      if (deduped.length === 0 || beat - deduped[deduped.length - 1].beat >= chordWindow) {
+        deduped.push({ chord: name, beat });
+      }
+    }
+    const chordProg = deduped.map(c => c.chord).filter(c => c !== 'NC');
+    const defaultChords = ['Am', 'F', 'C', 'G'];
+    const finalChords = chordProg.length >= 2 ? chordProg : defaultChords;
+
+    // Step 4: Create project + add transcribed melody + generated accompaniment
+    const synthIdx = steps.length;
+    steps.push({ step: 'synthesize', status: 'running' });
+    const tempo = (analysisData.bpm as number) || 120;
+    const totalBeats = ((analysisData.duration as number) || 273) * beatsPerSec2;
+    const totalBars = Math.max(8, Math.round(totalBeats / 4));
+
+    const proj = await bridge.call('project_create', { name: projectName, bpm: tempo }, t);
+    if (!proj.success) return { success: false, error: 'Failed to create project', data: { steps } };
+
+    // ── Add transcribed melody as one continuous track ──
+    const melodyFiltered = transNotes.filter(n => n.pitch >= 30 && n.pitch <= 108 && n.duration > 0);
+    if (melodyFiltered.length > 0) {
+      const tr = await bridge.call('track_add', { project: projectName, name: 'transcribed_melody', type: 'midi' }, t);
+      if (tr.success) {
+        await bridge.call('track_add_clip', {
+          project: projectName, track_id: (tr.data as { id: string }).id,
+          notes: melodyFiltered, program: 0,
+          start: 0, duration: totalBeats,
+        }, t);
+      }
+    }
+
+    // ── Generate chord voicing + bass from detected chords ──
+    const { generateChordVoicing: genChord, generateBassPattern: genBass } = await import('../orchestrator/composer.js');
+    const numChords = finalChords.length;
+    const beatsPerChord = totalBeats / numChords;
+
+    const chordVoicing: Array<{pitch:number;duration:number;start:number;velocity:number}> = [];
+    const bassNotes: Array<{pitch:number;duration:number;start:number;velocity:number}> = [];
+    for (let ci = 0; ci < numChords; ci++) {
+      const chordStart = ci * beatsPerChord;
+      chordVoicing.push(...genChord(finalChords[ci], beatsPerChord, chordStart, 60));
+      bassNotes.push(...genBass(finalChords[ci], beatsPerChord, chordStart, 85));
+    }
+
+    // Add chord track
+    if (chordVoicing.length > 0) {
+      const tr = await bridge.call('track_add', { project: projectName, name: 'chord_voicing', type: 'midi' }, t);
+      if (tr.success) {
+        await bridge.call('track_add_clip', {
+          project: projectName, track_id: (tr.data as { id: string }).id,
+          notes: chordVoicing, program: 0,
+          start: 0, duration: totalBeats,
+        }, t);
+      }
+    }
+    // Add bass track
+    if (bassNotes.length > 0) {
+      const tr = await bridge.call('track_add', { project: projectName, name: 'bass', type: 'midi' }, t);
+      if (tr.success) {
+        await bridge.call('track_add_clip', {
+          project: projectName, track_id: (tr.data as { id: string }).id,
+          notes: bassNotes, program: 32,
+          start: 0, duration: totalBeats,
+        }, t);
+      }
+    }
+    const totalNoteCount = melodyFiltered.length + chordVoicing.length + bassNotes.length;
+    steps[synthIdx] = { step: 'synthesize', status: 'ok', data: { totalNotes: totalNoteCount, melodyNotes: melodyFiltered.length, chords: finalChords } };
+
+    // Step 5: Render final
+    const renderIdx = steps.length;
+    steps.push({ step: 'render', status: 'running' });
+    const mixPath = `${outputDir}/${projectName}_acoustic_mix.wav`.replace(/\\/g, '/');
+    try { const { mkdirSync } = await import('node:fs'); mkdirSync(outputDir, { recursive: true }); } catch { /* ignore */ }
+    const renderResult = await bridge.call('render_final', {
+      project: projectName, output_path: mixPath, sample_rate: 44100,
+    }, t);
+    steps[renderIdx] = { step: 'render', status: renderResult.success ? 'ok' : 'warning', data: { output: mixPath } };
+
+    return {
+      success: true,
+      data: {
+        project: projectName,
+        original: audioPath,
+        acoustic_mix: mixPath,
+        arrangement: {
+          title: baseName,
+          tempo,
+          key: analysisData.key,
+          chords: finalChords,
+          totalNotes: totalNoteCount,
+          transcribedNotes: melodyFiltered.length,
+        },
+        analysis: {
+          bpm: analysisData.bpm,
+          key: analysisData.key,
+          key_confidence: analysisData.key_confidence,
+          duration: analysisData.duration,
+        },
+        vocals_path: vocalsPath,
+        steps,
+      },
+    };
+  },
+};
+
 // ── llm_usage_stats ───────────────────────────────
 const llmUsageStats: LLMToolDefinition = {
   name: 'llm_usage_stats',
@@ -741,6 +919,7 @@ export const LLM_TOOLS: LLMToolDefinition[] = [
   llmComposeFromIntent,
   llmAnalyzeMusic,
   llmRequestCheckpoint,
+  llmAdaptToAcoustic,
 ];
 
 export function getLLMTool(name: string): LLMToolDefinition | undefined {

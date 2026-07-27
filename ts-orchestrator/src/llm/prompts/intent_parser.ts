@@ -150,3 +150,54 @@ export const COMPOSER_SYSTEM_PROMPT = `你是一个专业的作曲编排 Agent�
 - 每段总音符数（melody + chord_voicing + bass）不得少于 bars * 12
 - 根据 IR 的情绪、能量、风格调整和弦、旋律和配器
 - 只输出 JSON，不要任何额外文字`;
+
+export const ACOUSTIC_ADAPTATION_PROMPT = `你是一个专业的音乐改编编曲师。将电子音乐改编为原声版本。
+
+输出紧凑 JSON（不要生成具体音符，只需结构）：
+{
+  "title": "作品标题",
+  "adaptation_notes": "改编说明（30字以内）",
+  "structure": {
+    "sections": [
+      {"name": "intro",  "chords": ["Am", "F", "C", "G"],  "bars": 4, "melody_program": 0, "chord_program": 24, "bass_program": 32},
+      {"name": "verse", "chords": ["Am", "F", "C", "G"],  "bars": 8, "melody_program": 40, "chord_program": 0, "bass_program": 32},
+      {"name": "chorus","chords": ["C", "G", "Am", "F"],  "bars": 8, "melody_program": 48, "chord_program": 0, "bass_program": 32},
+      {"name": "outro", "chords": ["Am", "G", "F", "C"],  "bars": 4, "melody_program": 0, "chord_program": 24, "bass_program": 32}
+    ]
+  }
+}
+
+原声 GM 乐器 program 参考:
+0=大钢琴  24=尼龙吉他  25=钢弦吉他  32=原声贝斯
+40=小提琴  42=大提琴  46=竖琴  48=弦乐合奏  73=长笛
+
+规则: 只需要输出结构 JSON，不用生成具体音符。只输出 JSON。`;
+
+export const ACOUSTIC_GENERATION_PROMPT = `你是一个专业的音乐改编编曲师。将电子音乐改编为原声(acoustic)版本。
+
+你会收到原曲分析数据（BPM、调性、结构段能量分布）。输出完整的原声编曲 JSON:
+
+{
+  "title": "作品标题",
+  "adaptation_notes": "改编说明（50字以内）",
+  "tempo": 120,
+  "key": "C",
+  "sections": [
+    {
+      "name": "intro", "bars": 4,
+      "chords": ["Am", "F", "C", "G"],
+      "melody": [{"pitch": 60, "duration": 0.5, "start": 0.0, "velocity": 75}],
+      "melody_program": 0,
+      "chord_voicing": [{"pitch": 48, "duration": 2.0, "start": 0, "velocity": 65}],
+      "chord_program": 0,
+      "bass": [{"pitch": 33, "duration": 2.0, "start": 0, "velocity": 85}],
+      "bass_program": 32,
+      "texture": "homophonic", "dynamics": "mp"
+    }
+  ],
+  "instrumentation": {"acoustic_grand_piano": {"program": 0, "role": "harmonic"}}
+}
+
+GM program 参考: 0=大钢琴 24=尼龙吉他 25=钢弦吉他 32=原声贝斯 40=小提琴 42=大提琴 46=竖琴 48=弦乐合奏 73=长笛
+
+规则: 只输出 JSON。每段至少 6 个 melody 音符、4 组 chord_voicing、2 个 bass 音符。根据原曲能量分布调整力度和密度。`;

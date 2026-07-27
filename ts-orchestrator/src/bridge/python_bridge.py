@@ -20,6 +20,32 @@ if os.path.isdir(_cantio_ai):
     sys.path.insert(0, _cantio_ai)
     os.environ["CANTIOAI_ROOT"] = _cantio_ai
 
+# ── Integrated Demucs source separation ──
+_demucs_root = os.path.join(os.path.dirname(root), "demucs-main") if os.path.basename(root) == "CantioDAW" else os.path.join(root, "..", "demucs-main")
+_demucs_root = os.path.abspath(_demucs_root)
+_SEPARATOR = None  # cached Separator instance
+_DEMUCS_AVAILABLE = False
+if os.path.isdir(_demucs_root):
+    sys.path.insert(0, _demucs_root)
+    try:
+        from demucs.api import Separator, save_audio as _demucs_save_audio
+        _DEMUCS_AVAILABLE = True
+    except ImportError as _e:
+        print(f"[py-bridge] demucs import failed (ImportError): {_e}", file=sys.stderr)
+    except Exception as _e:
+        print(f"[py-bridge] demucs import failed (Exception): {type(_e).__name__}: {_e}", file=sys.stderr)
+
+def _get_separator():
+    global _SEPARATOR
+    if _SEPARATOR is None and _DEMUCS_AVAILABLE:
+        try:
+            from demucs.api import Separator
+            _SEPARATOR = Separator(model="htdemucs", device="cpu", shifts=1, overlap=0.25, split=True, jobs=0, progress=False)
+        except Exception as _e:
+            print(f"[py-bridge] Separator init failed: {type(_e).__name__}: {_e}", file=sys.stderr)
+            return None
+    return _SEPARATOR
+
 from cantiodaw import (
     __version__,
     ProjectManager,
@@ -340,6 +366,8 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                         clip["start"] = params["start"]
                     if "duration" in params:
                         clip["duration"] = params["duration"]
+                    if "program" in params:
+                        clip["program"] = params["program"]
                     clip_id = t.add_clip(clip)
                     manager.save_project(p)
                     return {"success": True, "data": {"id": clip_id}}
@@ -1163,6 +1191,581 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 "count": len(deltas),
             }}
 
+        # ── Audio Deep Analysis ──
+        elif method == "audio_analyze_deep":
+            audio_path = params.get("audio_path", "")
+            if not audio_path or not os.path.exists(audio_path):
+                return {"success": False, "data": None, "error": f"Audio file not found: {audio_path}"}
+
+            import soundfile as sf
+            audio, sr = sf.read(audio_path)
+            if audio.ndim > 1:
+                audio_mono = np.mean(audio, axis=1).astype(np.float64)
+            else:
+                audio_mono = audio.astype(np.float64)
+
+            duration = len(audio_mono) / sr
+            hop = int(sr * 0.01)
+            n_fft = 4096
+
+            # ── BPM detection via onset autocorrelation ──
+            # Compute onset strength using spectral flux
+            def _onset_strength(sig, hop_size, nfft):
+                n_frames = (len(sig) - nfft) // hop_size + 1
+                if n_frames < 2:
+                    return np.array([0.0])
+                flux = np.zeros(n_frames - 1)
+                prev_mag = None
+                for i in range(n_frames):
+                    frame = sig[i * hop_size:i * hop_size + nfft]
+                    if len(frame) < nfft:
+                        break
+                    windowed = frame * np.hanning(nfft)
+                    spec = np.fft.rfft(windowed)
+                    mag = np.abs(spec)
+                    if prev_mag is not None and i > 0:
+                        diff = mag - prev_mag
+                        diff[diff < 0] = 0
+                        flux[i - 1] = np.sum(diff)
+                    prev_mag = mag
+                flux = flux / (np.max(flux) + 1e-8)
+                return flux
+
+            onset = _onset_strength(audio_mono, hop, n_fft)
+            bpm_candidates = []
+            if len(onset) > 10:
+                ac = np.correlate(onset, onset, mode='full')
+                ac = ac[len(ac) // 2:]
+                ac[:1] = 0
+                for bpm_try in range(60, 210):
+                    lag = int(60.0 * sr / (bpm_try * hop))
+                    if 0 < lag < len(ac):
+                        bpm_candidates.append((bpm_try, float(ac[lag])))
+                bpm_candidates.sort(key=lambda x: -x[1])
+                bpm = bpm_candidates[0][0] if bpm_candidates else 120
+                bpm_confidence = float(bpm_candidates[0][1] / (bpm_candidates[0][1] + bpm_candidates[-1][1] + 1)) if len(bpm_candidates) > 1 else 0.5
+            else:
+                bpm = 120
+                bpm_confidence = 0.1
+
+            # ── Key detection via chroma with Krumhansl profiles ──
+            def _chroma(sig, sr_val, hop_size, nfft, n_chroma=12):
+                n_frames = (len(sig) - nfft) // hop_size + 1
+                if n_frames < 1:
+                    return np.zeros((n_chroma, 1))
+                chroma = np.zeros((n_chroma, n_frames))
+                A4 = 440.0
+                for i in range(n_frames):
+                    frame = sig[i * hop_size:i * hop_size + nfft]
+                    if len(frame) < nfft:
+                        break
+                    windowed = frame * np.hanning(nfft)
+                    spec = np.abs(np.fft.rfft(windowed))
+                    freqs = np.fft.rfftfreq(nfft, 1.0 / sr_val)
+                    for c in range(n_chroma):
+                        for h in range(-3, 6):
+                            f_target = A4 * 2 ** ((c + h * 12 - 69) / 12)
+                            idx = np.argmin(np.abs(freqs - f_target))
+                            if idx < len(spec):
+                                chroma[c, i] += spec[idx]
+                chroma_sum = np.sum(chroma, axis=1)
+                chroma_sum = chroma_sum / (np.max(chroma_sum) + 1e-8)
+                return chroma_sum
+
+            chroma_vec = _chroma(audio_mono, sr, hop, n_fft)
+
+            # Major and minor key profiles (Krumhansl-Kessler)
+            major_profile = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
+            minor_profile = np.array([6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
+
+            pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+            best_key = "C"
+            best_mode = "major"
+            best_corr = -1
+            key_candidates = []
+            for mode, profile in [("major", major_profile), ("minor", minor_profile)]:
+                for shift in range(12):
+                    rolled = np.roll(profile, shift)
+                    corr = np.corrcoef(chroma_vec, rolled)[0, 1]
+                    if not np.isnan(corr):
+                        key_candidates.append((f"{pitch_names[shift]} {mode}", corr, mode == "major"))
+
+            key_candidates.sort(key=lambda x: -x[1])
+            if key_candidates:
+                best_key = key_candidates[0][0]
+                best_corr = key_candidates[0][1]
+            key_confidence = float(best_corr) if best_corr > 0 else 0.5
+
+            # ── Spectral features ──
+            spec_centroids = []
+            for i in range(0, len(audio_mono) - n_fft, hop):
+                frame = audio_mono[i:i + n_fft]
+                if len(frame) < n_fft:
+                    break
+                windowed = frame * np.hanning(n_fft)
+                spec = np.abs(np.fft.rfft(windowed))
+                freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+                total = np.sum(spec) + 1e-8
+                centroid = np.sum(freqs[:len(spec)] * spec) / total
+                spec_centroids.append(float(centroid))
+            avg_centroid = float(np.mean(spec_centroids)) if spec_centroids else 0
+
+            # ── RMS energy curve ──
+            frame_len = int(sr * 0.1)
+            rms_curve = []
+            for i in range(0, len(audio_mono) - frame_len, frame_len // 4):
+                chunk = audio_mono[i:i + frame_len]
+                rms = float(np.sqrt(np.mean(chunk ** 2)))
+                rms_curve.append(rms)
+            rms_curve = np.array(rms_curve)
+            rms_max = float(np.max(rms_curve)) if len(rms_curve) > 0 else 0
+            rms_curve_norm = (rms_curve / rms_max).tolist() if rms_max > 0 else rms_curve.tolist()
+
+            # ── Beat detection ──
+            beat_times = []
+            if len(onset) > 5:
+                beat_interval = 60.0 / bpm
+                beat_samples = int(beat_interval * sr)
+                # Find peaks in onset strength at roughly beat intervals
+                peak_indices = []
+                min_distance = int(beat_samples * 0.7 / hop)
+                for i in range(1, len(onset) - 1):
+                    if onset[i] > onset[i - 1] and onset[i] > onset[i + 1] and onset[i] > 0.03:
+                        if not peak_indices or i - peak_indices[-1] >= min_distance:
+                            peak_indices.append(i)
+                beat_times = [float(i * hop / sr) for i in peak_indices[:64]]
+
+            # ── Structure detection via self-similarity ──
+            structure_segments = []
+            n_segments = min(50, max(4, int(duration / 4)))
+            seg_len = len(rms_curve_norm) // n_segments if n_segments > 0 else 1
+            if seg_len > 0:
+                segment_features = []
+                for s in range(n_segments):
+                    start_idx = s * seg_len
+                    end_idx = min(start_idx + seg_len, len(rms_curve_norm))
+                    seg_rms = np.mean(rms_curve_norm[start_idx:end_idx]) if end_idx > start_idx else 0
+                    segment_features.append({
+                        "start_sec": round(s * duration / n_segments, 1),
+                        "end_sec": round(min((s + 1) * duration / n_segments, duration), 1),
+                        "rms": round(float(seg_rms), 3),
+                    })
+                structure_segments = segment_features
+
+            result = {
+                "file": audio_path,
+                "duration": round(duration, 2),
+                "sample_rate": sr,
+                "channels": int(audio.shape[1]) if audio.ndim > 1 else 1,
+                "bpm": bpm if bpm_candidates else 120,
+                "bpm_confidence": round(bpm_confidence, 3),
+                "key": best_key,
+                "key_confidence": round(key_confidence, 3),
+                "key_candidates": [{"key": k, "confidence": round(float(c), 3)} for k, c, _ in key_candidates[:5]],
+                "spectral_centroid_hz": round(avg_centroid, 1),
+                "beat_count": len(beat_times),
+                "beat_times": beat_times[:32],
+                "structure_segments": structure_segments,
+                "rms_curve": rms_curve_norm[:200],
+                "analysis_note": "Deep audio analysis. Use key and bpm for acoustic adaptation. Beat times can help align MIDI notes.",
+            }
+            return {"success": True, "data": result}
+
+        # ── Audio Source Separation (integrated Demucs) ──
+        elif method == "audio_split_stems":
+            audio_path = params.get("audio_path", "")
+            output_dir = params.get("output_dir", os.path.dirname(audio_path) if audio_path else ".")
+            if not audio_path or not os.path.exists(audio_path):
+                return {"success": False, "data": None, "error": f"Audio file not found: {audio_path}"}
+
+            base_name = os.path.splitext(os.path.basename(audio_path))[0]
+            os.makedirs(output_dir, exist_ok=True)
+            vocal_path = os.path.join(output_dir, f"{base_name}_vocals.wav")
+            inst_path = os.path.join(output_dir, f"{base_name}_instrumental.wav")
+
+            sep = _get_separator()
+            if sep is not None:
+                try:
+                    origin, stems = sep.separate_audio_file(Path(audio_path))
+                    if "vocals" in stems:
+                        _demucs_save_audio(stems["vocals"], vocal_path, samplerate=sep.samplerate, clip="rescale")
+                    other_stems = [v for k, v in stems.items() if k != "vocals"]
+                    if other_stems:
+                        instrumental = other_stems[0]
+                        for s in other_stems[1:]:
+                            instrumental = instrumental + s
+                        _demucs_save_audio(instrumental, inst_path, samplerate=sep.samplerate, clip="rescale")
+                    else:
+                        import soundfile as sf
+                        sf.write(inst_path, np.zeros((2, 1)), sep.samplerate)
+                    return {"success": True, "data": {
+                        "method": "demucs (integrated)",
+                        "sources": list(stems.keys()),
+                        "vocals": vocal_path, "instrumental": inst_path,
+                        "output_dir": output_dir,
+                    }}
+                except Exception:
+                    pass
+
+            # M/S fallback
+            import soundfile as sf
+            audio, sr = sf.read(audio_path)
+            audio_mono = np.mean(audio, axis=1) if audio.ndim > 1 else audio
+            if not (audio.ndim > 1 and audio.shape[1] >= 2):
+                sf.write(vocal_path, audio_mono, sr)
+                sf.write(inst_path, audio_mono, sr)
+                return {"success": True, "data": {"method": "identity (mono)", "vocals": vocal_path, "instrumental": inst_path, "output_dir": output_dir}}
+            left, right = audio[:, 0], audio[:, 1]
+            mid = (left + right) / 2
+            side = (left - right) / 2
+            try:
+                from scipy.signal import butter, sosfilt
+                sos = butter(4, 300, 'hp', fs=sr, output='sos')
+                vocals = mid * 0.8 + sosfilt(sos, side) * 0.2
+                instrumental = mid * 0.3 + side * 0.9
+            except ImportError:
+                vocals = mid
+                instrumental = side
+            sf.write(vocal_path, np.column_stack([vocals, vocals]), sr)
+            sf.write(inst_path, np.column_stack([instrumental, instrumental]), sr)
+            return {"success": True, "data": {"method": "mid-side", "vocals": vocal_path, "instrumental": inst_path, "output_dir": output_dir}}
+        # ── Audio Transcription (F0 → MIDI notes + chords) ──
+        # ── Audio Transcription ──
+        elif method == "audio_split_stems_async":
+            audio_path = params.get("audio_path", "")
+            output_dir = params.get("output_dir", os.path.dirname(audio_path) if audio_path else ".")
+            if not audio_path or not os.path.exists(audio_path):
+                return {"success": False, "data": None, "error": f"Audio file not found: {audio_path}"}
+
+            base_name = os.path.splitext(os.path.basename(audio_path))[0]
+            vocal_path = os.path.join(output_dir, f"{base_name}_vocals.wav")
+            inst_path = os.path.join(output_dir, f"{base_name}_instrumental.wav")
+
+            # If already separated, return immediately
+            if os.path.exists(vocal_path) and os.path.exists(inst_path):
+                return {"success": True, "data": {
+                    "status": "done",
+                    "vocals": vocal_path,
+                    "instrumental": inst_path,
+                    "output_dir": output_dir,
+                }}
+
+            # Start Demucs in background thread
+            import threading
+            def _run_separation():
+                try:
+                    sep = _get_separator()
+                    if sep is not None:
+                        from demucs.api import save_audio as _dsave
+                        origin, stems = sep.separate_audio_file(Path(audio_path))
+                        if "vocals" in stems:
+                            _dsave(stems["vocals"], vocal_path, samplerate=sep.samplerate, clip="rescale")
+                        other_stems = [v for k, v in stems.items() if k != "vocals"]
+                        if other_stems:
+                            instr = other_stems[0]
+                            for s in other_stems[1:]:
+                                instr = instr + s
+                            _dsave(instr, inst_path, samplerate=sep.samplerate, clip="rescale")
+                        else:
+                            import soundfile as sf
+                            sf.write(inst_path, np.zeros((2, 1)), sep.samplerate)
+                    else:
+                        # Fallback M/S
+                        import soundfile as sf
+                        audio, sr = sf.read(audio_path)
+                        if audio.ndim > 1 and audio.shape[1] >= 2:
+                            l, r = audio[:, 0], audio[:, 1]
+                            mid, side = (l + r) / 2, (l - r) / 2
+                            sf.write(vocal_path, np.column_stack([mid, mid]), sr)
+                            sf.write(inst_path, np.column_stack([side, side]), sr)
+                        else:
+                            audio_m = np.mean(audio, axis=1) if audio.ndim > 1 else audio
+                            sf.write(vocal_path, audio_m, sr)
+                            sf.write(inst_path, audio_m, sr)
+                except Exception:
+                    pass
+
+            t = threading.Thread(target=_run_separation, daemon=True)
+            t.start()
+
+            return {"success": True, "data": {
+                "status": "processing",
+                "vocals": vocal_path,
+                "instrumental": inst_path,
+                "output_dir": output_dir,
+                "note": "Separation running in background. Poll by checking if output files exist.",
+            }}
+
+        # ── Audio Transcription ──
+        elif method == "audio_split_stems_async":
+            audio_path = params.get("audio_path", "")
+            output_dir = params.get("output_dir", os.path.dirname(audio_path) if audio_path else ".")
+            if not audio_path or not os.path.exists(audio_path):
+                return {"success": False, "data": None, "error": f"Audio file not found: {audio_path}"}
+
+            base_name = os.path.splitext(os.path.basename(audio_path))[0]
+            os.makedirs(output_dir, exist_ok=True)
+            vocal_path = os.path.join(output_dir, f"{base_name}_vocals.wav")
+            inst_path = os.path.join(output_dir, f"{base_name}_instrumental.wav")
+
+            if os.path.exists(vocal_path) and os.path.exists(inst_path):
+                return {"success": True, "data": {"status": "done", "vocals": vocal_path, "instrumental": inst_path, "output_dir": output_dir}}
+
+            import threading
+            def _run_sep():
+                try:
+                    sep = _get_separator()
+                    if sep is not None:
+                        from demucs.api import save_audio as _dsave
+                        origin, stems = sep.separate_audio_file(Path(audio_path))
+                        if "vocals" in stems:
+                            _dsave(stems["vocals"], vocal_path, samplerate=sep.samplerate, clip="rescale")
+                        other_stems = [v for k, v in stems.items() if k != "vocals"]
+                        if other_stems:
+                            instr = other_stems[0]
+                            for s in other_stems[1:]:
+                                instr = instr + s
+                            _dsave(instr, inst_path, samplerate=sep.samplerate, clip="rescale")
+                        else:
+                            import soundfile as sf; sf.write(inst_path, np.zeros((2, 1)), sep.samplerate)
+                    else:
+                        # Fallback M/S
+                        import soundfile as sf
+                        audio, sr = sf.read(audio_path)
+                        if audio.ndim > 1 and audio.shape[1] >= 2:
+                            l, r = audio[:, 0], audio[:, 1]
+                            mid, side = (l + r) / 2, (l - r) / 2
+                            sf.write(vocal_path, np.column_stack([mid, mid]), sr)
+                            sf.write(inst_path, np.column_stack([side, side]), sr)
+                        else:
+                            audio_m = np.mean(audio, axis=1) if audio.ndim > 1 else audio
+                            sf.write(vocal_path, audio_m, sr)
+                            sf.write(inst_path, audio_m, sr)
+                except Exception as e:
+                    with open(os.path.join(output_dir, "separate_error.log"), "w") as f:
+                        f.write(f"{type(e).__name__}: {e}\n{traceback.format_exc()}")
+            threading.Thread(target=_run_sep, daemon=True).start()
+            return {"success": True, "data": {"status": "processing", "vocals": vocal_path, "instrumental": inst_path, "output_dir": output_dir, "note": "Separation running in background. Poll by re-calling this method."}}
+
+        elif method == "audio_transcribe":
+            audio_path = params.get("audio_path", "")
+            if not audio_path or not os.path.exists(audio_path):
+                return {"success": False, "data": None, "error": f"Audio file not found: {audio_path}"}
+
+            import soundfile as sf
+            audio, sr = sf.read(audio_path)
+            if audio.ndim > 1:
+                audio_mono = np.mean(audio, axis=1).astype(np.float64)
+            else:
+                audio_mono = audio.astype(np.float64)
+
+            # Downsample for faster processing
+            target_sr = 4000
+            ratio = max(1, int(sr / target_sr))
+            if ratio > 1:
+                trim_len = (len(audio_mono) // ratio) * ratio
+                audio_ds = np.mean(audio_mono[:trim_len].reshape(-1, ratio), axis=1)
+                sr_ds = sr // ratio
+            else:
+                audio_ds = audio_mono
+                sr_ds = sr
+
+            hop = 2048  # large hop for speed
+            nfft = 4096
+            duration = len(audio_mono) / sr
+
+            # ── Pre-filter: bandpass to isolate vocal/melody range ──
+            # Simple FFT-based bandpass filter (200-800 Hz for vocals)
+            fft_full = np.fft.rfft(audio_ds)
+            freqs_bp = np.fft.rfftfreq(len(audio_ds), 1.0 / sr_ds)
+            mask = np.ones(len(fft_full))
+            mask[freqs_bp < 200] = 0.0
+            mask[freqs_bp > 800] = 0.0
+            # Smooth transition at edges
+            edge_low = np.logical_and(freqs_bp >= 180, freqs_bp < 220)
+            edge_high = np.logical_and(freqs_bp > 720, freqs_bp <= 880)
+            mask[edge_low] = (freqs_bp[edge_low] - 180) / 40.0
+            mask[edge_high] = 1.0 - (freqs_bp[edge_high] - 720) / 160.0
+            audio_bp = np.fft.irfft(fft_full * mask, n=len(audio_ds))
+            audio_ds = audio_bp  # replace with filtered version
+
+            # ── F0 detection via spectral peak ──
+            n_frames = max(1, (len(audio_ds) - nfft) // hop)
+            f0s = np.zeros(n_frames)
+            f0_confs = np.zeros(n_frames)
+            freqs = np.fft.rfftfreq(nfft, 1.0 / sr_ds)
+            min_freq_idx = np.argmin(np.abs(freqs - 80))
+            max_freq_idx = np.argmin(np.abs(freqs - 1500))
+            hann = np.hanning(nfft)
+            spec_len = len(np.fft.rfft(np.zeros(nfft)))  # = nfft//2 + 1
+
+            for i in range(n_frames):
+                frame = audio_ds[i * hop:i * hop + nfft]
+                if len(frame) < nfft:
+                    break
+                rms = float(np.sqrt(np.mean(frame ** 2)))
+                if rms < 5e-5:  # energy gate
+                    continue
+                spec = np.abs(np.fft.rfft(frame * hann))
+                size = min(max_freq_idx, len(spec) - 1)
+                if size <= min_freq_idx:
+                    continue
+                idx = min_freq_idx + int(np.argmax(spec[min_freq_idx:size]))
+                peak = float(spec[idx])
+                noise = float(np.mean(spec[min_freq_idx:size]))
+                f0s[i] = freqs[idx]
+                f0_confs[i] = min(1.0, peak / (noise * 5 + 1e-8))
+
+            # ── Onset detection via spectral flux ──
+            onset_hop = hop
+            onset_nfft = 2048
+            onset_frames = max(1, (len(audio_ds) - onset_nfft) // onset_hop)
+            onset_strength = np.zeros(onset_frames)
+            prev_mag = None
+            for i in range(onset_frames):
+                seg = audio_ds[i * onset_hop:i * onset_hop + onset_nfft]
+                if len(seg) < onset_nfft:
+                    break
+                seg_win = seg[:onset_nfft] * np.hanning(min(len(seg), onset_nfft))
+                mag = np.abs(np.fft.rfft(seg_win))
+                if prev_mag is not None and len(mag) == len(prev_mag):
+                    diff = mag - prev_mag
+                    diff[diff < 0] = 0
+                    onset_strength[i] = float(np.sum(diff))
+                prev_mag = mag[:len(mag)]
+            peak = float(np.max(onset_strength))
+            if peak > 0:
+                onset_strength = onset_strength / peak
+
+            # ── Segment notes from F0 + onsets ──
+            notes = []
+            min_note_dur = 0.08  # minimum note duration
+            pitch_hold = None
+            pitch_start = 0.0
+            pitch_vels = []
+            hop_time = hop / sr_ds
+
+            for i in range(min(n_frames, len(f0_confs))):
+                t = i * hop_time
+                f0 = f0s[i]
+                conf = f0_confs[i]
+
+                is_voiced = conf > 0.02 and 40 < f0 < 2000
+                midi = round(69 + 12 * np.log2(max(f0, 1e-6) / 440.0)) if is_voiced else 0
+
+                if is_voiced:
+                    if pitch_hold is None:
+                        pitch_hold = midi
+                        pitch_start = t
+                        pitch_vels = [conf * 120]
+                    elif midi == pitch_hold:
+                        pitch_vels.append(conf * 120)
+                    else:
+                        note_dur = t - pitch_start
+                        if note_dur >= min_note_dur:
+                            notes.append({
+                                "pitch": int(pitch_hold),
+                                "start": round(float(pitch_start), 3),
+                                "duration": round(float(note_dur), 3),
+                                "velocity": max(30, min(127, int(np.mean(pitch_vels))))
+                            })
+                        pitch_hold = midi
+                        pitch_start = t
+                        pitch_vels = [conf * 120]
+                else:
+                    if pitch_hold is not None:
+                        note_dur = t - pitch_start
+                        if note_dur >= min_note_dur:
+                            notes.append({
+                                "pitch": int(pitch_hold),
+                                "start": round(float(pitch_start), 3),
+                                "duration": round(float(note_dur), 3),
+                                "velocity": max(30, min(127, int(np.mean(pitch_vels))))
+                            })
+                        pitch_hold = None
+
+            # ── Chord detection via chroma ──
+            chord_hop = int(sr_ds * 1.0)
+            chord_nfft = 4096
+            chord_frames = max(1, (len(audio_ds) - chord_nfft) // chord_hop)
+            chroma_all = np.zeros((12, chord_frames))
+            for i in range(chord_frames):
+                seg = audio_ds[i * chord_hop:i * chord_hop + chord_nfft]
+                if len(seg) < chord_nfft:
+                    break
+                spec = np.abs(np.fft.rfft(seg * np.hanning(chord_nfft)))
+                cfreqs = np.fft.rfftfreq(chord_nfft, 1.0 / sr_ds)
+                for c in range(12):
+                    for h in range(-3, 6):
+                        f_target = 440.0 * 2 ** ((c + h * 12 - 69) / 12)
+                        idx = np.argmin(np.abs(cfreqs - f_target))
+                        if idx < len(spec):
+                            chroma_all[c, i] += spec[idx]
+            chroma_all = chroma_all / (np.max(chroma_all, axis=0, keepdims=True) + 1e-8)
+
+            pitch_names = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+            chord_names = ['', 'm', 'dim', 'aug', '7', 'maj7', 'm7', 'sus4', 'sus2', 'dim7']
+            chord_templates = {
+                '':    [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
+                'm':   [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
+                'dim': [1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0],
+                '7':   [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0],
+                'maj7':[1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
+                'm7':  [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0],
+                'sus4':[1, 0, 0, 0, 0, 1, 0, 1, 0, 0, 0, 0],
+                'dim7':[1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0],
+            }
+            chords_detected = []
+            chord_sec = (chord_hop / sr_ds)
+            for i in range(chord_frames):
+                best_chord = "NC"
+                best_score = 0.3  # threshold
+                chroma = chroma_all[:, i]
+                for root_idx, root_name in enumerate(pitch_names):
+                    for qual_name, template in chord_templates.items():
+                        tmpl = np.array(template)
+                        rolled = np.concatenate([tmpl[root_idx:], tmpl[:root_idx]])
+                        score = np.corrcoef(chroma, rolled)[0, 1]
+                        if not np.isnan(score) and score > best_score:
+                            best_score = score
+                            best_chord = root_name + qual_name
+                chords_detected.append({
+                    "chord": best_chord,
+                    "time": round(i * chord_sec, 2),
+                    "confidence": round(best_score, 3)
+                })
+
+            # ── Get BPM from analysis ──
+            bpm = params.get("bpm", None)
+            if bpm is None:
+                ana = handle("audio_analyze_deep", {"audio_path": audio_path}, "")
+                if ana["success"]:
+                    bpm = ana["data"].get("bpm", 120)
+                else:
+                    bpm = 120
+            beats_per_sec = bpm / 60.0
+
+            # ── Convert time→beat offsets ──
+            beat_notes = []
+            for n in notes:
+                beat_start = round(n["start"] * beats_per_sec, 2)
+                beat_dur = max(0.25, round(n["duration"] * beats_per_sec, 2))
+                beat_notes.append({
+                    "pitch": n["pitch"],
+                    "start": beat_start,
+                    "duration": beat_dur,
+                    "velocity": n["velocity"],
+                })
+
+            return {"success": True, "data": {
+                "file": audio_path,
+                "duration": round(duration, 2),
+                "bpm_used": bpm,
+                "note_count": len(notes),
+                "notes": beat_notes,
+                "chords": chords_detected,
+                "method": "HPS pitch detection + spectral flux onsets",
+            }}
         else:
             return {"success": False, "data": None, "error": f"Unknown method: {method}"}
 

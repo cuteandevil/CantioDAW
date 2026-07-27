@@ -94,7 +94,7 @@ export async function composeFromIR(router: LLMRouter, ir: MusicIR, model?: stri
   }
 }
 
-const CHORD_TO_PITCHES: Record<string, number[]> = {
+export const CHORD_TO_PITCHES: Record<string, number[]> = {
   'C':  [48, 52, 55, 60], 'Cm': [48, 51, 55, 60],
   'D':  [50, 54, 57, 62], 'Dm': [50, 53, 57, 62],
   'E':  [52, 56, 59, 64], 'Em': [52, 55, 59, 64],
@@ -107,12 +107,12 @@ const CHORD_TO_PITCHES: Record<string, number[]> = {
   'A#': [58, 62, 65, 70], 'C#': [49, 53, 56, 61],
 };
 
-function parseChordRoot(chord: string): string {
+export function parseChordRoot(chord: string): string {
   const m = chord.match(/^[A-G][#b]?/);
   return m ? m[0] : 'C';
 }
 
-function generateChordVoicing(chord: string, chordDuration: number, beatOffset: number, velocity: number): MIDINoteEvent[] {
+export function generateChordVoicing(chord: string, chordDuration: number, beatOffset: number, velocity: number): MIDINoteEvent[] {
   const root = parseChordRoot(chord);
   const pitches = CHORD_TO_PITCHES[root] || CHORD_TO_PITCHES['C'];
   // Target 2 notes per beat for rich accompaniment
@@ -131,7 +131,7 @@ function generateChordVoicing(chord: string, chordDuration: number, beatOffset: 
   return arp;
 }
 
-function generateBassPattern(chord: string, beats: number, beatOffset: number, velocity: number): MIDINoteEvent[] {
+export function generateBassPattern(chord: string, beats: number, beatOffset: number, velocity: number): MIDINoteEvent[] {
   const root = parseChordRoot(chord);
   const bassPitches: Record<string, number> = {
     'C': 36, 'D': 38, 'E': 40, 'F': 41, 'G': 43, 'A': 45, 'B': 47,

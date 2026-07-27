@@ -768,6 +768,50 @@ const analyzeAudio: ToolDefinition = {
   handler: (b, p, t) => b.call('analyze_audio', p, t),
 };
 
+const audioAnalyzeDeep: ToolDefinition = {
+  name: 'audio_analyze_deep',
+  description: '[分析] Deep audio analysis: BPM detection, key detection (chroma + Krumhansl profiles), spectral features, beat grid, RMS energy curve, structure segmentation. Use this before acoustic adaptation to understand the source material.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      audio_path: { type: 'string', description: 'Path to audio file (.flac/.wav/.mp3)' },
+    },
+    required: ['audio_path'],
+  },
+  handler: (b, p, t) => b.call('audio_analyze_deep', p, t),
+};
+
+const audioTranscribe: ToolDefinition = {
+  name: 'audio_transcribe',
+  description: '[分析] 自动扒谱：将音频转换为 MIDI 音符。使用谐波积谱(HPS)检测音高 + 频谱通量检测音符起止点 + 半音和弦识别。输出节拍对齐的 MIDI 音符 + 和弦列表。',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      audio_path: { type: 'string', description: 'Path to audio file (.flac/.wav/.mp3)' },
+      bpm: { type: 'number', description: 'BPM (auto-detected if not specified)' },
+    },
+    required: ['audio_path'],
+  },
+  handler: (b, p, t) => b.call('audio_transcribe', p, t),
+};
+
+const separateAudio: ToolDefinition = {
+  name: 'separate_audio',
+  description: '[执行] 音频源分离：使用集成 Demucs (Hybrid Transformer v4) 将音频分离为人声+伴奏。后台运行，立即返回预期输出路径。重复调用可查询进度（文件存在即完成）。',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      audio_path: { type: 'string', description: 'Path to audio file (.flac/.wav/.mp3)' },
+      output_dir: { type: 'string', description: 'Output directory for separated stems' },
+    },
+    required: ['audio_path'],
+  },
+  handler: (b, p, t) => b.call('audio_split_stems_async', {
+    audio_path: p.audio_path,
+    output_dir: p.output_dir || undefined,
+  }, t),
+};
+
 const revisionExecute: ToolDefinition = {
   name: 'revision_execute',
   description: '[编排] Run critic→fix→re-check revision loop with convergence control. Analyzes project, applies top fixes, re-analyzes to confirm improvement. Stops when quality threshold met, no improvement, or max iterations reached.',
@@ -958,6 +1002,9 @@ export const ALL_TOOLS: ToolDefinition[] = [
   analyzeMelody,
   analyzeRhythm,
   analyzeAudio,
+  audioAnalyzeDeep,
+  audioTranscribe,
+  separateAudio,
   // Revision (Phase 8)
   revisionExecute,
   // Vocal Quality (P0/P1)

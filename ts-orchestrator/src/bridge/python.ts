@@ -102,7 +102,7 @@ export class PythonBridge {
     });
   }
 
-  async call(method: string, params: Record<string, unknown> = {}, token?: string): Promise<PythonResult> {
+  async call(method: string, params: Record<string, unknown> = {}, token?: string, timeoutMs = 600_000): Promise<PythonResult> {
     await this.ensureRunning();
     const id = `${++this.requestId}-${createHash('md5').update(method + JSON.stringify(params)).digest('hex').slice(0, 8)}`;
 
@@ -116,7 +116,7 @@ export class PythonBridge {
           this.pending.delete(id);
           resolve({ success: false, data: null, error: 'Request timed out' });
         }
-      }, 120_000);
+      }, timeoutMs);
     });
   }
 

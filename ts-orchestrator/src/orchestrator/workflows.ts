@@ -196,6 +196,25 @@ export const fullPipelineWorkflow: WorkflowDefinition = {
   ],
 };
 
+// ── Adapt to Acoustic: Audio file → Analysis → Acoustic arrangement → Render ──
+export const adaptToAcousticWorkflow: WorkflowDefinition = {
+  id: 'adapt_to_acoustic',
+  name: 'Adapt to Acoustic',
+  description: '将电子音乐改编为原声版本：分析原曲 → LLM生成原声编曲 → SoundFont渲染 → 混合导出',
+  steps: [
+    step('deep_analyze', 'Deep Audio Analysis', 'audio_analyze_deep', (ctx) => ({
+      audio_path: ctx.audio_path ?? ctx.input ?? '',
+    })),
+    step('adapt', 'Generate Acoustic Version', 'llm_adapt_to_acoustic', (ctx) => ({
+      audio_path: ctx.audio_path ?? ctx.input ?? '',
+      project_name: ctx.project_name,
+      output_dir: ctx.output_dir ?? './output',
+      separate_vocals: ctx.separate_vocals ?? true,
+      style_hint: ctx.style_hint ?? '',
+    })),
+  ],
+};
+
 export const WORKFLOWS: WorkflowDefinition[] = [
   composeSongWorkflow,
   trainVoiceWorkflow,
@@ -204,6 +223,7 @@ export const WORKFLOWS: WorkflowDefinition[] = [
   composeFromIntentWorkflow,
   criticReviseWorkflow,
   fullPipelineWorkflow,
+  adaptToAcousticWorkflow,
 ];
 
 export function getWorkflow(id: string): WorkflowDefinition | undefined {
