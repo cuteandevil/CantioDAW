@@ -675,9 +675,12 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 diff = version_manager.diff(params["project"], v_prev.version_id, versions[-1].version_id)
             else:
                 diff = {"changes": {}, "track_count_change": 0}
+            msg = params.get("message", "")
+            if isinstance(msg, str):
+                msg = msg.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
             return {"success": True, "data": {
                 "checkpoint": True,
-                "message": params.get("message", ""),
+                "message": msg,
                 "project": params["project"],
                 "track_count": len(p.tracks),
                 "version_count": len(versions),
@@ -957,6 +960,9 @@ def handle(method: str, params: dict, token: str = "") -> dict:
 
 
 def main():
+    if hasattr(sys.stdin, 'reconfigure'):
+        sys.stdin.reconfigure(encoding='utf-8')
+        sys.stdout.reconfigure(encoding='utf-8')
     for line in sys.stdin:
         line = line.strip()
         if not line:
