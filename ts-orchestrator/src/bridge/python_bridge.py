@@ -680,6 +680,7 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 msg = msg.encode('utf-8', errors='surrogatepass').decode('utf-8', errors='replace')
             return {"success": True, "data": {
                 "checkpoint": True,
+                "checkpoint_type": params.get("checkpoint_type", "optional"),
                 "message": msg,
                 "project": params["project"],
                 "track_count": len(p.tracks),
@@ -730,6 +731,39 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             )
             preference_collector.record_abtest(result)
             return {"success": True, "data": {"recorded": True}}
+
+        elif method == "list_feedback":
+            project_id = params.get("project", "")
+            feedback_list = []
+            if preference_collector.feedback_file.exists():
+                with open(preference_collector.feedback_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        record = json.loads(line)
+                        if not project_id or record.get("project_id") == project_id:
+                            feedback_list.append(record)
+            abtest_list = []
+            if preference_collector.abtest_file.exists():
+                with open(preference_collector.abtest_file, encoding="utf-8") as f:
+                    for line in f:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        record = json.loads(line)
+                        if not project_id or record.get("project_id") == project_id:
+                            abtest_list.append(record)
+            avg_score = preference_collector.get_average_score(project_id) if project_id else 0.0
+            adoption_rate = preference_collector.get_adoption_rate(project_id) if project_id else 0.0
+            return {"success": True, "data": {
+                "project": project_id,
+                "feedback_count": len(feedback_list),
+                "feedback": feedback_list,
+                "ab_tests": abtest_list,
+                "average_score": avg_score,
+                "adoption_rate": adoption_rate,
+            }}
 
         # ── Phase 6: Critic Tools ──
         elif method == "analyze_music":
@@ -782,6 +816,109 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                         )
                     )
             return {"success": True, "data": results}
+
+        elif method == "revision_execute":
+            project_name = params["project"]
+            domains = params.get("domains", ["harmony", "melody", "rhythm", "audio"])
+            max_iterations = min(params.get("max_iterations", 5), 10)
+            quality_threshold = params.get("quality_threshold", 0.8)
+            no_improvement_limit = params.get("no_improvement_limit", 3)
+
+            iteration_history = []
+            previous_avg = 1.0
+            no_improvement_count = 0
+
+            for it in range(1, max_iterations + 1):
+                analysis = handle("analyze_music", {"project": project_name, "domains": domains}, "")["data"]
+                all_diagnoses = []
+                for domain, result in analysis.items():
+                    diags = result.get("diagnoses", [])
+                    for d in diags:
+                        all_diagnoses.append({
+                            "domain": domain,
+                            "issue": d.get("issue", d.get("problem", "")),
+                            "severity": d.get("severity", 0),
+                        })
+                if not all_diagnoses:
+                    iteration_history.append({"iteration": it, "avg_severity": 0, "status": "no issues"})
+                    break
+
+                current_avg = sum(d["severity"] for d in all_diagnoses) / len(all_diagnoses)
+
+                if current_avg <= quality_threshold:
+                    iteration_history.append({"iteration": it, "avg_severity": current_avg, "status": "quality met"})
+                    break
+                if current_avg >= previous_avg:
+                    no_improvement_count += 1
+                else:
+                    no_improvement_count = 0
+                if no_improvement_count >= no_improvement_limit:
+                    iteration_history.append({"iteration": it, "avg_severity": current_avg, "status": "no improvement"})
+                    break
+
+                previous_avg = current_avg
+
+                sorted_diags = sorted(all_diagnoses, key=lambda d: d["severity"], reverse=True)
+                fixes = []
+
+                # target → (tool, params_builder)
+                def _build_tool_call(diag):
+                    domain = diag["domain"]
+                    issue = diag["issue"]
+                    tools = []
+                    if domain == "harmony":
+                        if "dominant" in issue:
+                            tools.append(("adjust_harmonic_color", {"project": project_name, "quality_delta": "+dominant"}))
+                        if "解决" in issue or "resolution" in issue.lower():
+                            tools.append(("adjust_harmonic_color", {"project": project_name, "quality_delta": "+resolution"}))
+                        if "不协和" in issue or "dissonance" in issue.lower():
+                            tools.append(("adjust_harmonic_color", {"project": project_name, "quality_delta": "-dissonance"}))
+                    elif domain == "melody":
+                        if "动机" in issue or "contour" in issue.lower():
+                            tools.append(("adjust_articulation", {"project": project_name, "style": "varied", "overlap_delta": 0.2}))
+                        if "大跳" in issue or "step" in issue.lower():
+                            tools.append(("adjust_articulation", {"project": project_name, "style": "legato", "overlap_delta": 0.15}))
+                        if "轮廓" in issue:
+                            tools.append(("adjust_micro_timing", {"project": project_name, "adjustments": [{"start": 0, "end": 0, "offset_delta_ms": -5}]}))
+                    elif domain == "rhythm":
+                        if "切分" in issue or "syncopation" in issue.lower():
+                            tools.append(("apply_swing", {"project": project_name, "ratio": 0.3}))
+                        if "密度偏" in issue or "density" in issue.lower():
+                            tools.append(("adjust_dynamics", {"project": project_name, "curve_delta": 0.2}))
+                        if "稳定性" in issue or "stability" in issue.lower():
+                            tools.append(("adjust_micro_timing", {"project": project_name, "adjustments": [{"start": 0, "end": 0, "offset_delta_ms": 3}]}))
+                    elif domain == "audio":
+                        if "动态" in issue or "dynamic" in issue.lower():
+                            tools.append(("effect_apply", {"project": project_name, "effect": "compressor", "ratio": 4.0, "threshold": -20}))
+                        if "亮度" in issue or "bright" in issue.lower():
+                            tools.append(("effect_apply", {"project": project_name, "effect": "eq", "high_shelf_gain_db": 2}))
+                        if "低频" in issue or "sub" in issue.lower() or "bass" in issue.lower():
+                            tools.append(("effect_apply", {"project": project_name, "effect": "eq", "low_shelf_gain_db": -3}))
+                    return tools
+
+                for diag in sorted_diags[:3]:
+                    for tool_name, tool_params in _build_tool_call(diag):
+                        try:
+                            r = handle(tool_name, tool_params, "")
+                            fixes.append({"tool": tool_name, "success": r.get("success", False), "issue": diag["issue"]})
+                        except Exception:
+                            fixes.append({"tool": tool_name, "success": False})
+
+                iteration_history.append({
+                    "iteration": it,
+                    "avg_severity": current_avg,
+                    "diagnoses_count": len(all_diagnoses),
+                    "fixes": fixes,
+                })
+
+            final = iteration_history[-1] if iteration_history else {}
+            return {"success": True, "data": {
+                "project": project_name,
+                "iterations": iteration_history,
+                "total_iterations": len(iteration_history),
+                "final_severity": final.get("avg_severity", 1.0),
+                "converged": "status" in final,
+            }}
 
         elif method == "analyze_harmony":
             p = manager.load_project(params["project"])

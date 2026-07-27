@@ -663,6 +663,19 @@ const feedbackABTest: ToolDefinition = {
   handler: (b, p, t) => b.call('feedback_ab_test', p, t),
 };
 
+const feedbackList: ToolDefinition = {
+  name: 'list_feedback',
+  description: 'List all recorded feedback for a project, including scores, AB test results, average score, and adoption rate',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      project: { type: 'string', description: 'Project name (omit to list all)' },
+    },
+    required: [],
+  },
+  handler: (b, p, t) => b.call('list_feedback', p, t),
+};
+
 // ──────────────────────────── Critic Tools (Phase 6) ────────────────────────────
 
 const analyzeHarmony: ToolDefinition = {
@@ -721,6 +734,23 @@ const analyzeAudio: ToolDefinition = {
     },
   },
   handler: (b, p, t) => b.call('analyze_audio', p, t),
+};
+
+const revisionExecute: ToolDefinition = {
+  name: 'revision_execute',
+  description: 'Run critic→fix→re-check revision loop with convergence control. Analyzes project, applies top fixes, re-analyzes to confirm improvement. Stops when quality threshold met, no improvement, or max iterations reached.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      project: { type: 'string', description: 'Project name' },
+      domains: { type: 'array', items: { type: 'string', enum: ['harmony', 'melody', 'rhythm', 'audio'] }, description: 'Domains to analyze and fix' },
+      max_iterations: { type: 'integer', minimum: 1, maximum: 10, default: 5 },
+      quality_threshold: { type: 'number', minimum: 0, maximum: 1, default: 0.8, description: 'Stop when average severity drops below this' },
+      no_improvement_limit: { type: 'integer', default: 3, description: 'Stop after N consecutive rounds without improvement' },
+    },
+    required: ['project'],
+  },
+  handler: (b, p, t) => b.call('revision_execute', p, t),
 };
 
 // ──────────────────────────── Vocal Quality Tools (P0/P1) ────────────────────────────
@@ -847,11 +877,14 @@ export const ALL_TOOLS: ToolDefinition[] = [
   // Preference (Phase 9)
   feedbackSubmit,
   feedbackABTest,
+  feedbackList,
   // Critic (Phase 6)
   analyzeHarmony,
   analyzeMelody,
   analyzeRhythm,
   analyzeAudio,
+  // Revision (Phase 8)
+  revisionExecute,
   // Vocal Quality (P0/P1)
   analyzeVocalQuality,
   adjustSynthesizedPitch,

@@ -695,12 +695,13 @@ const llmAnalyzeMusic: LLMToolDefinition = {
 // ── llm_request_checkpoint ───────────────────────
 const llmRequestCheckpoint: LLMToolDefinition = {
   name: 'llm_request_checkpoint',
-  description: 'Request a human checkpoint during automated workflow. Returns current vs previous version key metric comparison.',
+  description: 'Request a human checkpoint during automated workflow. Mandatory checkpoints pause execution until approved; optional ones are informational only. Returns current vs previous version key metric comparison.',
   inputSchema: {
     type: 'object',
     properties: {
       project: { type: 'string', description: 'Project name' },
       message: { type: 'string', description: 'Optional message to display at checkpoint' },
+      checkpoint_type: { type: 'string', enum: ['mandatory', 'optional'], default: 'optional', description: 'Mandatory = workflow pauses until human approval; optional = informational only' },
     },
     required: ['project'],
   },
@@ -708,6 +709,7 @@ const llmRequestCheckpoint: LLMToolDefinition = {
     return bridge.call('request_checkpoint', {
       project: params.project,
       message: params.message,
+      checkpoint_type: params.checkpoint_type ?? 'optional',
     }, t);
   },
 };

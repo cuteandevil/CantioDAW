@@ -113,16 +113,16 @@ export const composeFromIntentWorkflow: WorkflowDefinition = {
   ],
 };
 
-// ── Critic & Revise: Generate → Critic → Fix → Preview ──
+// ── Critic & Revise: Analyze → Revise → Re-check → Preview ──
 export const criticReviseWorkflow: WorkflowDefinition = {
   id: 'critic_revise',
   name: 'Critic & Revise',
-  description: 'Analyze project → run critics → generate revision plan → apply fixes (MVP Phase 2-3)',
+  description: 'Analyze project → run critics → execute revision loop → re-check → preview (MVP Phase 2-3)',
   steps: [
     step('snapshot_before', 'Snapshot Before', 'project_snapshot', (ctx) => ({
       project: (ctx.project_name ?? ctx.project ?? '') as string,
     })),
-    step('analyze', 'Analyze Music', 'llm_analyze_music', (ctx) => ({
+    step('revise', 'Revision Loop', 'revision_execute', (ctx) => ({
       project: (ctx.project_name ?? ctx.project ?? '') as string,
       domains: (ctx.domains ?? ['harmony', 'melody', 'rhythm']) as string[],
     })),
@@ -131,7 +131,7 @@ export const criticReviseWorkflow: WorkflowDefinition = {
     })),
     step('preview', 'Render Preview', 'render_preview', (ctx) => ({
       project: (ctx.project_name ?? ctx.project ?? '') as string,
-      output_path: `${ctx.project_name ?? 'project'}_critiqued.wav`,
+      output_path: `${ctx.project_name ?? 'project'}_revised.wav`,
     })),
   ],
 };
@@ -140,7 +140,7 @@ export const criticReviseWorkflow: WorkflowDefinition = {
 export const fullPipelineWorkflow: WorkflowDefinition = {
   id: 'full_pipeline',
   name: 'Full AI Pipeline',
-  description: 'End-to-end: NL → IR → Compose → Critic → Revise → Final render (MVP Phase 4)',
+  description: 'End-to-end: NL → IR → Compose → Critic → Revise (auto-loop) → Final render (MVP Phase 4)',
   steps: [
     step('parse_intent', 'Parse Intent', 'llm_parse_intent', (ctx) => ({
       text: (ctx.description ?? '') as string,
@@ -159,6 +159,12 @@ export const fullPipelineWorkflow: WorkflowDefinition = {
       };
     }),
     step('analyze', 'Analyze Music', 'llm_analyze_music', (ctx) => {
+      const composeResult = ctx.compose as { project?: string } | undefined;
+      return {
+        project: (ctx.project_name ?? composeResult?.project ?? 'ai_composition') as string,
+      };
+    }),
+    step('revise', 'Revision Loop', 'revision_execute', (ctx) => {
       const composeResult = ctx.compose as { project?: string } | undefined;
       return {
         project: (ctx.project_name ?? composeResult?.project ?? 'ai_composition') as string,
