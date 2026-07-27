@@ -130,6 +130,32 @@ if (existsSync(bridgePy)) {
   console.log('  Copied python_bridge.py');
 }
 
+// Copy demucs Python package
+const demucsSrc = join(ROOT, '..', '..', 'demucs-main', 'demucs');
+const demucsDst = join(RELEASE, 'demucs');
+if (existsSync(demucsSrc)) {
+  function copyDir(src, dst) {
+    mkdirSync(dst, { recursive: true });
+    for (const entry of readdirSync(src, { withFileTypes: true })) {
+      const s = join(src, entry.name), d = join(dst, entry.name);
+      if (entry.isDirectory()) copyDir(s, d);
+      else if (!entry.name.endsWith('.pyc') && entry.name !== '__pycache__') copyFileSync(s, d);
+    }
+  }
+  copyDir(demucsSrc, demucsDst);
+  let pyCount = 0;
+  function countPys(dir) {
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      if (e.isDirectory() && e.name !== '__pycache__') countPys(join(dir, e.name));
+      else if (e.name.endsWith('.py')) pyCount++;
+    }
+  }
+  countPys(demucsDst);
+  console.log(`  Copied demucs/ (${pyCount} .py files)`);
+} else {
+  console.log('  WARNING: demucs-main not found — skipping');
+}
+
 // Copy README
 const readme = join(ROOT, '..', 'README.md');
 if (existsSync(readme)) copyFileSync(readme, join(RELEASE, 'README.md'));
@@ -148,7 +174,13 @@ echo   cantiodaw-mcp.exe toollist   List all tools
 echo.
 echo Requirements:
 echo   - Python 3.9+ (for the Python bridge)
+echo   - torch + torchaudio (pip install torch torchaudio)
+echo   - soundfile, numpy, mido (pip install soundfile numpy mido)
+echo   - Optional: scipy (pip install scipy)
 echo   - CantioDAW project root (set CANTIODAW_ROOT or run from project dir)
+echo.
+echo First-time setup:
+echo   pip install torch torchaudio soundfile numpy mido scipy
 echo.
 pause
 `;

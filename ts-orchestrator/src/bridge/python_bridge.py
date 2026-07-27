@@ -23,6 +23,10 @@ if os.path.isdir(_cantio_ai):
 # ── Integrated Demucs source separation ──
 _demucs_root = os.path.join(os.path.dirname(root), "demucs-main") if os.path.basename(root) == "CantioDAW" else os.path.join(root, "..", "demucs-main")
 _demucs_root = os.path.abspath(_demucs_root)
+# Also check release directory (demucs/ alongside python_bridge.py)
+_demucs_release = os.path.join(os.path.dirname(os.path.abspath(__file__)), "demucs")
+if not os.path.isdir(_demucs_root) and os.path.isdir(_demucs_release):
+    _demucs_root = _demucs_release
 _SEPARATOR = None  # cached Separator instance
 _DEMUCS_AVAILABLE = False
 if os.path.isdir(_demucs_root):
