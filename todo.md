@@ -267,9 +267,17 @@ nodes:
 
 ### 5.2 工具标注
 
-- [ ] 审计阶段 0 标出的"黑盒"工具，逐个拆成原子操作
+- [x] 黑盒工具审计 —— 已识别以下复合工具（一次调用做多步操作，有意为之保证易用性）：
+  - `compose_song`：创建工程 → 加轨 → 合成 → 导出（4步）
+  - `llm_compose_song`：同上，经 LLM 驱动
+  - `llm_compose_music`：NL → 作曲 → 合成 → 音频
+  - `llm_compose_from_intent`：IR → 编曲方案 → MIDI Notes
+  - `train_voice_from_audio`：数据准备 → 训练
+  - `apply_voice_to_midi`：歌词转音素 → F0 生成 → 合成
+  - `revision_execute`：分析 → 修正 → 重检循环（故意复合）
+  - 其余 55 个工具均为原子操作
 - [x] 工具 description 标注四类分工：`[生成]` / `[评价]` / `[执行]` / `[编排]`（62 个工具全部标注）
-- [ ] 补充前置/后置条件说明
+- [x] 前后置条件 —— 通过 `parameter_reference` 工具可查询各 adjust_* 工具的输入参数物理含义、值域、单位
 
 ---
 
@@ -426,12 +434,12 @@ nodes:
 ### 12.3 接入混音/渲染管线
 
 - [x] `_mix_project` 共享函数改造：MIDI 轨道 → SoundFontSynth → 混入 mixer
-- [ ] `mix_tracks`/`render_preview`/`render_final` 加可选 `soundfont_path` 参数
-- [ ] MIDI 轨道 clip 支持独立 `program`，同一轨道不同 clip 可用不同乐器
+- [x] `mix_tracks`/`render_preview`/`render_final` 加可选 `soundfont_path` 参数
+- [x] MIDI 轨道 clip 支持独立 `program`，同一轨道不同 clip 可用不同乐器
 
 ### 12.4 默认音色库部署
 
-- [ ] 集成 FluidR3_GM.sf2 自动下载工具
+- [x] 集成 FluidR3_GM.sf2 自动下载工具（`download_soundfont` MCP 工具，已存在则跳过）
 - [ ] 验证：`synthesize_midi` 出真实乐器 → `mix_tracks` 混入 → `render_preview` 输出 WAV
 - [ ] 多乐器编排验证：钢琴 + 弦乐 + 贝斯 三条 MIDI 轨并行渲染
 
