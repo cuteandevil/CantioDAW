@@ -42,6 +42,8 @@ class PreferenceCollector:
         self.feedback_file = self.data_dir / "feedback.jsonl"
         self.abtest_file = self.data_dir / "abtest.jsonl"
         self.adoption_file = self.data_dir / "adoption.jsonl"
+        self.replay_file = self.data_dir / "replays.jsonl"
+        self.favorite_file = self.data_dir / "favorites.jsonl"
 
     def record_feedback(self, feedback: UserFeedback) -> None:
         with open(self.feedback_file, "a", encoding="utf-8") as f:
@@ -106,3 +108,49 @@ class PreferenceCollector:
                     if record.get("accepted"):
                         accepted += 1
         return accepted / max(total, 1)
+
+    def record_replay(self, version_id: str, project_id: str) -> None:
+        record = {
+            "version_id": version_id,
+            "project_id": project_id,
+            "timestamp": datetime.now().isoformat(),
+        }
+        with open(self.replay_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def record_favorite(self, version_id: str, project_id: str, favorited: bool = True) -> None:
+        record = {
+            "version_id": version_id,
+            "project_id": project_id,
+            "favorited": favorited,
+            "timestamp": datetime.now().isoformat(),
+        }
+        with open(self.favorite_file, "a", encoding="utf-8") as f:
+            f.write(json.dumps(record, ensure_ascii=False) + "\n")
+
+    def get_replay_count(self, version_id: str) -> int:
+        if not self.replay_file.exists():
+            return 0
+        count = 0
+        with open(self.replay_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                if record.get("version_id") == version_id:
+                    count += 1
+        return count
+
+    def is_favorited(self, version_id: str) -> bool:
+        if not self.favorite_file.exists():
+            return False
+        with open(self.favorite_file, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                record = json.loads(line)
+                if record.get("version_id") == version_id and record.get("favorited"):
+                    return True
+        return False

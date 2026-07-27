@@ -676,6 +676,35 @@ const feedbackList: ToolDefinition = {
   handler: (b, p, t) => b.call('list_feedback', p, t),
 };
 
+const trackReplay: ToolDefinition = {
+  name: 'track_replay',
+  description: 'Record a replay event for a project version (user listened to this version)',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      project: { type: 'string', description: 'Project name' },
+      version_id: { type: 'string', description: 'Version ID being replayed' },
+    },
+    required: ['project'],
+  },
+  handler: (b, p, t) => b.call('track_replay', p, t),
+};
+
+const trackFavorite: ToolDefinition = {
+  name: 'track_favorite',
+  description: 'Record or toggle favorite status for a project version',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      project: { type: 'string', description: 'Project name' },
+      version_id: { type: 'string', description: 'Version ID' },
+      favorited: { type: 'boolean', default: true, description: 'True to favorite, false to unfavorite' },
+    },
+    required: ['project'],
+  },
+  handler: (b, p, t) => b.call('track_favorite', p, t),
+};
+
 // ──────────────────────────── Critic Tools (Phase 6) ────────────────────────────
 
 const analyzeHarmony: ToolDefinition = {
@@ -757,7 +786,7 @@ const revisionExecute: ToolDefinition = {
 
 const synthesizeMIDI: ToolDefinition = {
   name: 'synthesize_midi',
-  description: 'Synthesize multi-track arrangement to WAV using basic waveforms (melody=triangle, chord=sawtooth, bass=sine)',
+  description: 'Synthesize multi-track arrangement to WAV using SoundFont real instruments (when available) or oscillator fallback (sine/triangle/sawtooth). Supports GM program/bank selection.',
   inputSchema: {
     type: 'object',
     properties: {
@@ -778,10 +807,23 @@ const synthesizeMIDI: ToolDefinition = {
       tempo: { type: 'number', default: 120 },
       output_path: { type: 'string', default: 'synthesized.wav' },
       sample_rate: { type: 'integer', default: 24000 },
+      soundfont_path: { type: 'string', description: 'Path to .sf2/.sf3 SoundFont file. If not specified, auto-detects from data/soundfonts/' },
+      program: { type: 'integer', default: 0, description: 'GM MIDI program number (e.g. 0=Acoustic Grand Piano, 40=Violin, 48=String Ensemble). Only used with SoundFont.' },
+      bank: { type: 'integer', default: 0, description: 'MIDI bank select (0=default). Only used with SoundFont.' },
     },
     required: ['notes'],
   },
   handler: (b, p, t) => b.call('synthesize_midi', p, t),
+};
+
+const listSoundfonts: ToolDefinition = {
+  name: 'list_soundfonts',
+  description: 'List available SoundFont (.sf2/.sf3) files found in data/soundfonts/ and other search paths. Shows whether each is loaded and how many instruments it contains.',
+  inputSchema: {
+    type: 'object',
+    properties: {},
+  },
+  handler: (b, p, t) => b.call('list_soundfonts', p, t),
 };
 
 const analyzeVocalQuality: ToolDefinition = {
@@ -878,6 +920,8 @@ export const ALL_TOOLS: ToolDefinition[] = [
   feedbackSubmit,
   feedbackABTest,
   feedbackList,
+  trackReplay,
+  trackFavorite,
   // Critic (Phase 6)
   analyzeHarmony,
   analyzeMelody,
@@ -890,6 +934,7 @@ export const ALL_TOOLS: ToolDefinition[] = [
   adjustSynthesizedPitch,
   // Synthesis (was missing from registry)
   synthesizeMIDI,
+  listSoundfonts,
 ];
 
 export function getTool(name: string): ToolDefinition | undefined {

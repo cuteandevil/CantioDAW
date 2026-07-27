@@ -198,13 +198,14 @@ def _to_dict(obj):
     return obj
 
 def _mix_project(project_name: str, track_ids=None):
-    """Shared helper: load project, create mixer, add audio clips. Returns mixer or None."""
+    """Shared helper: load project, create mixer, add audio/MIDI clips. Returns mixer or None."""
     p = manager.load_project(project_name)
     mixer = Mixer(p.sample_rate)
     for t in p.tracks:
         if track_ids is not None and t.id not in track_ids:
             continue
         if t.type == "midi":
+            _add_midi_track_to_mixer(mixer, t, p)
             continue
         for clip in t.clips:
             path = clip.get("path", "")
@@ -214,6 +215,23 @@ def _mix_project(project_name: str, track_ids=None):
     if not mixer.channels:
         return None
     return mixer
+
+
+def _add_midi_track_to_mixer(mixer, track, project):
+    from cantiodaw.synthesis.soundfont import SoundFontSynth
+    notes = []
+    for clip in track.clips:
+        if "notes" in clip:
+            notes.extend(clip["notes"])
+    if not notes:
+        return
+    synth = SoundFontSynth.create(sample_rate=mixer.sample_rate)
+    program = getattr(track, "program", 0) or 0
+    audio = synth.render(notes, project.bpm, program, 0)
+    track_id = f"_synth_{track.id}"
+    mixer.set_channel(track_id, volume=getattr(track, "volume", 1.0))
+    mixer.channels[track_id]["audio"] = audio.astype(np.float32)
+    mixer.channels[track_id]["mute"] = getattr(track, "mute", False)
 
 def handle(method: str, params: dict, token: str = "") -> dict:
     try:
@@ -424,68 +442,16 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             notes = params.get("notes", [])
             tempo = params.get("tempo", 120)
             sr = params.get("sample_rate", 24000)
+            soundfont_path = params.get("soundfont_path", None)
+            program = params.get("program", params.get("instrument", 0))
+            bank = params.get("bank", 0)
 
-            beats_per_sec = tempo / 60.0
-            total_duration = 0.0
-            note_events = []
-            for n in notes:
-                pitch = n["pitch"]
-                start_beats = n.get("start", 0)
-                dur_beats = n.get("duration", 1)
-                velocity = n.get("velocity", 80)
-                ntype = n.get("type", n.get("track", "melody"))
-                freq = 440.0 * (2.0 ** ((pitch - 69) / 12.0))
-                start_sec = start_beats / beats_per_sec
-                dur_sec = dur_beats / beats_per_sec
-                end_sec = start_sec + dur_sec
-                note_events.append((start_sec, end_sec, freq, velocity / 127.0, ntype, pitch))
-                if end_sec > total_duration:
-                    total_duration = end_sec
-
-            total_samples = int(total_duration * sr) + sr
-            audio = np.zeros(total_samples, dtype=np.float64)
-            t = np.arange(total_samples) / sr
-
-            for start_sec, end_sec, freq, amp, ntype, pitch in note_events:
-                start_idx = int(start_sec * sr)
-                end_idx = int(end_sec * sr)
-                if end_idx > len(audio):
-                    end_idx = len(audio)
-                n_len = end_idx - start_idx
-                if n_len <= 0:
-                    continue
-                local_t = t[:n_len]
-
-                if "bass" in ntype:
-                    # Bass: pure sine, clean low end
-                    tone = np.sin(2 * np.pi * freq * local_t)
-                    amp *= 0.5
-                    env_attack = int(0.01 * sr)
-                    env_release = int(0.1 * sr)
-                elif "chord" in ntype:
-                    # Chord: soft sawtooth with harmonics, lower volume
-                    tone = (0.4 * np.sin(2 * np.pi * freq * local_t)
-                          + 0.3 * np.sin(2 * np.pi * freq * 2 * local_t)
-                          + 0.2 * np.sin(2 * np.pi * freq * 3 * local_t))
-                    amp *= 0.25
-                    env_attack = int(0.05 * sr)
-                    env_release = int(0.2 * sr)
-                else:
-                    # Melody: triangle wave (warmer)
-                    tone = 2 * np.abs(2 * (local_t * freq - np.floor(local_t * freq + 0.5))) - 1
-                    amp *= 0.4
-                    env_attack = int(0.02 * sr)
-                    env_release = int(0.08 * sr)
-
-                envelope = np.ones(n_len)
-                if env_attack > 0 and env_attack < n_len:
-                    envelope[:env_attack] = np.linspace(0, 1, env_attack)
-                if env_release > 0 and env_release < n_len:
-                    envelope[-env_release:] = np.linspace(1, 0, env_release)
-
-                audio[start_idx:end_idx] += tone * envelope * amp
-
-            audio = np.clip(audio, -1.0, 1.0)
+            from cantiodaw.synthesis.soundfont import SoundFontSynth
+            synth = SoundFontSynth.create(
+                soundfont_path=soundfont_path,
+                sample_rate=sr,
+            )
+            audio = synth.render(notes, tempo, program, bank)
 
             out_path = params.get("output_path", "")
             if out_path:
@@ -497,7 +463,18 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                     "sample_rate": sr,
                     "duration": len(audio) / sr,
                     "note_count": len(notes),
+                    "engine": "soundfont" if synth.available else "oscillator",
+                    "soundfont_loaded": synth.soundfont_path,
                 }}
+            return {"success": True, "data": {
+                "samples": len(audio),
+                "sample_rate": sr,
+                "duration": len(audio) / sr,
+                "note_count": len(notes),
+                "engine": "soundfont" if synth.available else "oscillator",
+                "soundfont_loaded": synth.soundfont_path,
+                "audio_preview": audio[:100].tolist(),
+            }}
             return {"success": True, "data": {
                 "samples": len(audio),
                 "sample_rate": sr,
@@ -756,6 +733,13 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                             abtest_list.append(record)
             avg_score = preference_collector.get_average_score(project_id) if project_id else 0.0
             adoption_rate = preference_collector.get_adoption_rate(project_id) if project_id else 0.0
+
+            # Enrich feedback with replay counts and favorite status
+            for fb in feedback_list:
+                vid = fb.get("version_id", "")
+                fb["replay_count"] = preference_collector.get_replay_count(vid)
+                fb["is_favorited"] = preference_collector.is_favorited(vid)
+
             return {"success": True, "data": {
                 "project": project_id,
                 "feedback_count": len(feedback_list),
@@ -764,6 +748,21 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 "average_score": avg_score,
                 "adoption_rate": adoption_rate,
             }}
+
+        elif method == "track_replay":
+            preference_collector.record_replay(
+                version_id=params.get("version_id", params.get("project", "")),
+                project_id=params["project"],
+            )
+            return {"success": True, "data": {"recorded": True}}
+
+        elif method == "track_favorite":
+            preference_collector.record_favorite(
+                version_id=params.get("version_id", params.get("project", "")),
+                project_id=params["project"],
+                favorited=params.get("favorited", True),
+            )
+            return {"success": True, "data": {"recorded": True}}
 
         # ── Phase 6: Critic Tools ──
         elif method == "analyze_music":
@@ -981,7 +980,23 @@ def handle(method: str, params: dict, token: str = "") -> dict:
                 "suggestions": [],
             })}
 
-        # ── Vocal Quality Tools ──
+        elif method == "list_soundfonts":
+            from cantiodaw.synthesis.soundfont import _find_sf2_paths, SoundFontSynth
+            sf2_files = _find_sf2_paths()
+            found = []
+            for sf2 in sf2_files:
+                synth = SoundFontSynth(soundfont_path=str(sf2))
+                found.append({
+                    "path": str(sf2),
+                    "loaded": synth.available,
+                    "instruments": len(synth.list_instruments()),
+                })
+            return {"success": True, "data": {
+                "soundfonts": found,
+                "count": len(found),
+                "tip": "Place .sf2 files in data/soundfonts/ or install pyfluidsynth",
+            }}
+
         elif method == "analyze_vocal_quality":
             audio_data = params.get("audio", None)
             audio_path = params.get("audio_path", None)
