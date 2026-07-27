@@ -240,9 +240,11 @@ nodes:
 
 ### 4.3 DAW/MIDI 参数映射
 
-- [ ] MIDI 参数映射（CC/velocity/note offset → 物理参数）
-- [ ] DAW 参数映射（现有 adjust_* 工具的 delta 化改造）
-- [ ] 乐器参数映射（音色库特定参数）
+- [x] MIDI 参数映射（CC/velocity/note offset → 物理参数）
+- [x] DAW 参数映射（现有 adjust_* 工具的 delta 化改造）
+- [x] 乐器参数映射（音色库特定参数）
+
+**代码位置**：`cantiodaw/music/parameter_mapping.py` + MCP 工具 `parameter_reference`
 
 ---
 
@@ -266,7 +268,7 @@ nodes:
 ### 5.2 工具标注
 
 - [ ] 审计阶段 0 标出的"黑盒"工具，逐个拆成原子操作
-- [ ] 工具 description 标注四类分工：`生成` / `评价` / `执行` / `编排`
+- [x] 工具 description 标注四类分工：`[生成]` / `[评价]` / `[执行]` / `[编排]`（62 个工具全部标注）
 - [ ] 补充前置/后置条件说明
 
 ---
@@ -349,7 +351,7 @@ nodes:
 - [x] 解析 Critic 输出 → 生成修改优先级列表
 - [x] 自动选择优化方向（优先修最高 severity 问题）
 - [x] 调用对应 adjust_* 工具执行修改
-- [ ] 修改后自动重跑 critic 验证
+- [x] 修改后自动重跑 critic 验证（`revision_execute` 工具：analyze→fix→re-check 收敛循环）
 
 **代码位置**：`ts-orchestrator/src/orchestrator/revision.ts`
 
@@ -374,7 +376,7 @@ nodes:
 
 - [x] 用户评分接口（1-5 分，关联到版本 ID）
 - [x] A/B 测试支持（两个版本并排对比，用户选择偏好）
-- [ ] 重听/收藏行为记录
+- [x] 重听/收藏行为记录（`track_replay`/`track_favorite`，`list_feedback` 附带 replay_count + is_favorited）
 - [x] 修改采纳率跟踪（用户接受/拒绝了哪些 critic 建议）
 
 ### 9.2 偏好模型
@@ -391,7 +393,7 @@ nodes:
 
 - [x] 设计 `request_checkpoint` 工具（`llm_request_checkpoint`）
 - [x] checkpoint 返回当前 vs 上一版本的关键指标对比
-- [ ] 明确强制/可选 checkpoint 节点
+- [x] 明确强制/可选 checkpoint 节点（`checkpoint_type`: `mandatory`/`optional`）
 
 ---
 
@@ -408,22 +410,22 @@ nodes:
 
 ### 12.1 基础设施 — SoundFontSynth 引擎
 
-- [ ] 新建 `cantiodaw/synthesis/soundfont.py` — SoundFontSynth 封装类
-- [ ] `render(notes, tempo, program, bank) → np.ndarray` 批量渲染
-- [ ] `list_instruments()` 枚举音色库可用乐器
-- [ ] `pip install pyfluidsynth` 添加到 `pyproject.toml` 依赖
-- [ ] `config.yaml` 加 `paths.soundfonts_dir`
-- [ ] 默认 SF2 自动查找逻辑（`data/soundfonts/` → 振荡器降级）
+- [x] 新建 `cantiodaw/synthesis/soundfont.py` — SoundFontSynth 封装类
+- [x] `render(notes, tempo, program, bank) → np.ndarray` 批量渲染
+- [x] `list_instruments()` 枚举音色库可用乐器
+- [x] `pip install pyfluidsynth` 添加到 `pyproject.toml` 依赖
+- [x] `config.yaml` 加 `paths.soundfonts_dir`
+- [x] 默认 SF2 自动查找逻辑（`data/soundfonts/` → 振荡器降级）
 
 ### 12.2 替换 `synthesize_midi` 路径
 
-- [ ] `python_bridge.py` 改造：传 `soundfont_path`/`program`/`bank` → SoundFontSynth，无参数时降级振荡器
-- [ ] `tools.ts` `synthesizeMIDI` 加 soundfont/program/bank 参数
-- [ ] 保留振荡器 fallback：`pyfluidsynth` 不可用或不传 path 时走老路
+- [x] `python_bridge.py` 改造：传 `soundfont_path`/`program`/`bank` → SoundFontSynth，无参数时降级振荡器
+- [x] `tools.ts` `synthesizeMIDI` 加 soundfont/program/bank 参数
+- [x] 保留振荡器 fallback：`pyfluidsynth` 不可用或不传 path 时走老路
 
 ### 12.3 接入混音/渲染管线
 
-- [ ] `_mix_project` 共享函数改造：MIDI 轨道 → SoundFontSynth → 混入 mixer
+- [x] `_mix_project` 共享函数改造：MIDI 轨道 → SoundFontSynth → 混入 mixer
 - [ ] `mix_tracks`/`render_preview`/`render_final` 加可选 `soundfont_path` 参数
 - [ ] MIDI 轨道 clip 支持独立 `program`，同一轨道不同 clip 可用不同乐器
 
