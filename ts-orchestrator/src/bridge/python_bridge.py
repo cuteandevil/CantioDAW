@@ -411,13 +411,22 @@ def handle(method: str, params: dict, token: str = "") -> dict:
             return {"success": True, "data": result.tolist()}
 
         elif method == "train_prepare":
-            dm = VoiceDatasetManager(params["voice_name"])
-            dm.add_directory(params["data_dir"])
-            info = dm.get_info()
+            dm = VoiceDatasetManager()
+            voice_name = params["voice_name"]
+            data_dir = params["data_dir"]
+            dm.create_voice(voice_name)
+            count = 0
+            total_dur = 0.0
+            for f in Path(data_dir).iterdir():
+                if f.suffix.lower() in (".wav", ".flac", ".mp3"):
+                    sample = dm.add_sample(voice_name, str(f))
+                    if sample:
+                        count += 1
+                        total_dur += sample.duration
             return {"success": True, "data": {
-                "voice_name": info.voice_name,
-                "sample_count": info.sample_count,
-                "total_duration": info.total_duration,
+                "voice_name": voice_name,
+                "sample_count": count,
+                "total_duration": total_dur,
             }}
 
         elif method == "train_start":
