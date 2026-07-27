@@ -157,7 +157,7 @@ class VocalCritic:
             if "pitch deviation" in d.problem.lower():
                 suggestions.append({
                     "action": "adjust_synthesized_pitch",
-                    "params": {"correction_cents": -d.details[0].split(":")[1].strip().split(" ")[0] if ":" in d.details[0] else -50},
+                    "params": {"correction_cents": -float(d.details[0].split(":")[1].strip().split(" ")[0]) if ":" in d.details[0] else -50},
                     "reason": d.problem,
                 })
             elif "electrical" in d.problem.lower():
