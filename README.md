@@ -18,7 +18,7 @@
 <a href="#quick-start">Quick Start</a> |
 <a href="#download">Download</a> |
 <a href="#features">Features</a> |
-<a href="#tools">Tools (66)</a> |
+<a href="#tools">Tools (80)</a> |
 <a href="https://github.com/cuteandevil/CantioDAW/releases">Releases</a>
 
 </div>
@@ -31,11 +31,12 @@
 
 | File | Size | Description |
 |------|------|-------------|
-| cantiodaw-mcp.exe | 89.8 MB | Obfuscated MCP server (66 tools) |
-| python_bridge.py | 82 KB | Python bridge (56 DAW methods + Demucs v4 + FluidSynth) |
+| CantioDAW.exe | 128 MB | Standalone DAW desktop application (PyQt GUI) |
+| cantiodaw-mcp.exe | 88 MB | Obfuscated MCP server (80 tools) |
+| python_bridge.py | 95 KB | Python bridge (56 DAW methods + Demucs v4 + FluidSynth) |
 | demucs.zip | 79 KB | Demucs v4 HTDemucs source separation (35 .py) |
 | soundfonts.zip | 29.8 MB | GeneralUser GS SoundFont (145 real instruments) |
-| luidsynth_dlls.zip | 11 DLLs | FluidSynth runtime libraries |
+| fluidsynth_dlls.zip | 11 DLLs | FluidSynth runtime libraries |
 
 ## Quick Start
 
@@ -51,7 +52,7 @@ unzip fluidsynth_dlls.zip
 # 3. Run
 cantiodaw-mcp.exe --test    # Self-test (28/28)
 cantiodaw-mcp.exe            # Start MCP server
-cantiodaw-mcp.exe toollist   # List all 66 tools
+cantiodaw-mcp.exe toollist   # List all 80 tools
 `
 
 ## Features
@@ -83,18 +84,19 @@ train_voice_from_audio { "voice_name": "my_voice", "data_dir": "samples" }
 synthesize { "model_path": "model.pth", "config_path": "config.yaml" }
 `
 
-## Tools (66)
+## Tools (80)
 
 | Category | Count | Key Tools |
 |----------|-------|-----------|
+| DAW Desktop App | 1 | CantioDAW.exe (PyQt GUI) |
 | Project & Track | 9 | create, add, update, clip |
 | MIDI & Synthesis | 6 | f0, phonemes, SoundFont synth |
 | Audio Analysis | 6 | deep analyze, transcribe, Demucs separate |
 | Parameter Adjust | 7 | dynamics, articulation, vibrato, swing |
 | Version & Feedback | 9 | snapshot, diff, rollback, ratings |
 | Render | 2 | preview, final |
-| LLM | 16 | compose, lyrics, analyze, adapt |
-| Utility | 11 | soundfonts, download, reference |
+| LLM | 17 | compose, lyrics, analyze, adapt, chat, stream |
+| MCP Utility | 11 | soundfonts, download, reference, list models |
 
 Full list: see [Releases](https://github.com/cuteandevil/CantioDAW/releases) or run cantiodaw-mcp.exe toollist.
 
