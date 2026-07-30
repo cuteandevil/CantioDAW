@@ -7,6 +7,7 @@
 [![GitHub release](https://img.shields.io/github/v/release/cuteandevil/CantioDAW?color=76bad9)](https://github.com/cuteandevil/CantioDAW/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
 [![Node](https://img.shields.io/badge/node-18+-green.svg)](https://nodejs.org/)
+[![License](https://img.shields.io/badge/license-Proprietary-red.svg)](LICENSE)
 
 <br>
 
