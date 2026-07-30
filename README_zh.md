@@ -1,4 +1,4 @@
-﻿<div align="center">
+<div align="center">
 
 # CantioDAW · 你说，AI 做
 
@@ -18,7 +18,7 @@
 <a href="#快速开始">快速开始</a> |
 <a href="#下载">下载</a> |
 <a href="#核心功能">核心功能</a> |
-<a href="#工具列表">工具 (66)</a> |
+<a href="#工具列表">工具 (80)</a> |
 <a href="https://github.com/cuteandevil/CantioDAW/releases">发行版</a>
 
 </div>
@@ -126,4 +126,3 @@ synthesize { "model_path": "model.pth", "config_path": "config.yaml" }
 (c) 2025-2026 CantioDAW. All Rights Reserved.
 
 </div>
-
