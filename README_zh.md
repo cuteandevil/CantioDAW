@@ -1,8 +1,8 @@
-<div align="center">
+﻿<div align="center">
 
-# CantioDAW · AI 智能体音乐制作框架
+# CantioDAW · 你说，AI 做
 
-**AI 驱动的歌声/音乐制作管线** — 离线批处理，生成 MIDI + 音频导入 DAW。
+**描述一首歌。AI 自动编曲，用神经合成引擎演奏，自我 critique 反复打磨至成品。无需钢琴卷帘、时间线或手动混音。**
 
 [![GitHub release](https://img.shields.io/github/v/release/cuteandevil/CantioDAW?color=76bad9)](https://github.com/cuteandevil/CantioDAW/releases/latest)
 [![Python](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
@@ -126,3 +126,4 @@ synthesize { "model_path": "model.pth", "config_path": "config.yaml" }
 (c) 2025-2026 CantioDAW. All Rights Reserved.
 
 </div>
+
